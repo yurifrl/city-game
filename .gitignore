@@ -1,0 +1,7 @@
+/target
+/data
+node_modules/
+dist/
+.tasks/
+.worktrees/
+*.log

@@ -1,0 +1,9 @@
+[package]
+name = "city-simulation"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+city-protocol = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }

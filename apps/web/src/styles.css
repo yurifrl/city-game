@@ -1,0 +1,109 @@
+:root {
+  color-scheme: dark;
+  font-family: system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #14161c;
+  color: #e8e6e1;
+}
+
+#stage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  outline: none;
+  touch-action: none;
+}
+
+#panel {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  background: rgba(20, 22, 28, 0.92);
+  border: 1px solid #2c3140;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.chip {
+  align-self: flex-start;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #232838;
+  border: 1px solid #343b52;
+}
+
+#panel section { border-top: 1px solid #2c3140; padding-top: 8px; }
+#panel h3 { margin: 0 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: #9aa3b5; }
+
+.def-card {
+  border: 1px solid #2c3140;
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin-bottom: 6px;
+  cursor: pointer;
+}
+.def-card:hover, .def-card.armed { border-color: #d8a24a; }
+.def-card .name { font-weight: 600; font-size: 13px; }
+.def-card .meta { font-size: 11px; color: #9aa3b5; }
+
+#designer label { display: block; font-size: 11px; color: #9aa3b5; margin: 6px 0 2px; }
+#designer input, #designer select {
+  width: 100%;
+  background: #1b1f2a;
+  color: #e8e6e1;
+  border: 1px solid #2c3140;
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-size: 12px;
+}
+#designer .row { display: flex; gap: 6px; }
+#designer button {
+  margin-top: 8px;
+  width: 100%;
+  background: #d8a24a;
+  border: none;
+  color: #14161c;
+  font-weight: 700;
+  padding: 6px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+#designer button:disabled { opacity: 0.5; cursor: default; }
+#designer .errors { color: #e06c75; font-size: 11px; margin-top: 6px; white-space: pre-line; }
+#designer .derived { color: #98c379; font-size: 11px; margin-top: 6px; }
+
+#toasts {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+}
+.toast {
+  background: #2a1f22;
+  border: 1px solid #5c333b;
+  color: #e8b4ba;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.toast.info { background: #1f242a; border-color: #3a4652; color: #aebcc9; }
