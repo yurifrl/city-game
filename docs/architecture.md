@@ -243,3 +243,14 @@ Use identical content/camera/material/effect/update streams for the Babylon/Thre
 Measure CPU render preparation, culling, picking, allocations/GC, GPU timestamps when available, draws/passes, material changes, upload bytes, estimated owned GPU resources, server system timings, path expansions/backlog, memory per resident, persistence latency, snapshot size and bytes/client. GPU and CPU overlap; do not add their timings naively. GPU buffer limits are not a VRAM budget, and universal accurate browser GPU-memory telemetry is not assumed.
 
 If gates fail, identify the bottleneck and reduce unnecessary work or revise explicit supported capacity. Do not reduce simulation fidelity secretly, freeze an interactive workload to make it pass, or claim Wasm is the fix without an end-to-end comparison.
+
+## 9. Milestone 1 implementation deviations
+
+Recorded at integration of milestone 1 ("author a building and place it"); revisit when the deferred items return to scope.
+
+- **Plain TypeScript DOM instead of React for panels.** The M1 web slices shipped without React to keep the vertical slice small; `src/main.ts` wires catalogue/designer/inspector directly. Reintroduce React (or another panel framework) when panel state genuinely outgrows manual DOM updates — the renderer stays framework-independent either way.
+- **Hand-mirrored `src/protocol/types.ts` kept, ts-rs bindings not imported.** Generated `*.ts` exists (`apps/web/src/protocol/generated/`, byte-pinned by protocol tests) but the client uses the hand mirror: ts-rs emits `bigint` for u64/`WireId` where the client needs `number`-on-`JSON.parse` semantics and per-type files with imports. Keep the mirror and the wire tests in lockstep; swap only when the generated output is strictly drop-in.
+- **Receipt of rejected-but-well-formed commands.** Rejected commands are receipted so a resubmission replays the same verdict instead of re-deciding; `duplicate_identity_conflict` is its own reject code rather than a `bad_request` variant.
+- **Asset publish flows through the single-writer command queue** because id allocation and the one rusqlite connection are owned by the world runner.
+- **Definition revision is constant 1 in M1** (definitions immutable; placements with another revision are rejected); schema gains a revision column when revisions become real.
+- **Known cosmetic follow-up fixed at integration:** ESC now clears the catalogue card's armed highlight via `onDisarm` (previously the tool disarmed but the highlight persisted).

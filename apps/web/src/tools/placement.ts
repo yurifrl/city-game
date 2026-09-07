@@ -25,6 +25,7 @@ export interface PlacementDeps {
   send(command: CommandTS): Promise<CommandResultTS>;
   nextCommandId(): string;
   onSelectBuilding(id: string | null): void;
+  onDisarm(): void;
 }
 
 const CLICK_SLOP_PX = 5;
@@ -53,6 +54,7 @@ export class PlacementTool {
 
   disarm(): void {
     this.armed = null;
+    this.deps.onDisarm();
     this.deps.ghost.hide();
     this.deps.grid.setHover(this.hovered, "neutral");
   }

@@ -123,6 +123,11 @@ function markArmed(id: string | null): void {
   }
 }
 
+/** Clears the armed highlight (ESC / tool disarm). */
+export function clearArmed(): void {
+  markArmed(null);
+}
+
 export function mountCatalogue(
   container: HTMLElement,
   defs: AssetDefinitionTS[],

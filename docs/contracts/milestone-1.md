@@ -38,8 +38,8 @@ Wire JSON (text frames over WS, JSON bodies over HTTP), `snake_case`, tagged wit
 
 // server → client (on connect)
 {"type":"hello","actor":"owner","world":{"grid":{"width":96,"height":96},"tick":0,
- "buildings":[{"id":"1","def_id":"1","revision":1,"cell":{"x":10,"y":12},"rotation":0,"derived":{"capacity":9,"cost_credits":2160}}],
- "definitions":[{"id":"1","revision":1,"recipe":{...},"derived":{"capacity":9,"cost_credits":2160}}]}}
+ "buildings":[{"id":"1","def_id":"1","revision":1,"cell":{"x":10,"y":12},"rotation":0,"derived":{"capacity":2,"cost_credits":2160}}],
+ "definitions":[{"id":"1","revision":1,"recipe":{...},"derived":{"capacity":2,"cost_credits":2160}}]}}
 
 // server → client (after each committed command, broadcast to ALL connections)
 {"type":"event","event":{"type":"building_placed","building":{...as above...}}}

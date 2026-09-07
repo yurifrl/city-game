@@ -16,7 +16,7 @@ import { CityClient } from "./connection/client";
 import type { ConnectionStatus } from "./connection/client";
 import { mountInspector } from "./inspectors/building";
 import { compilePrototype } from "./assets/compiler";
-import { mountCatalogue, mountDesigner, upsertCatalogueEntry } from "./editors/designer";
+import { clearArmed, mountCatalogue, mountDesigner, upsertCatalogueEntry } from "./editors/designer";
 import type { DesignerDeps } from "./editors/designer";
 import type {
   AssetDefinitionTS,
@@ -140,6 +140,7 @@ async function boot(): Promise<void> {
       }
       inspector.show({ building, definition: replica.definition(building.def_id) ?? null });
     },
+    onDisarm: clearArmed,
   });
 
   async function demolish(buildingId: string): Promise<void> {
