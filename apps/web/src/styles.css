@@ -107,3 +107,33 @@ html, body {
   font-size: 12px;
 }
 .toast.info { background: #1f242a; border-color: #3a4652; color: #aebcc9; }
+
+.notice {
+  font-size: 11px;
+  color: #9aa3b5;
+  font-style: italic;
+}
+
+.insp-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  padding: 2px 0;
+}
+.insp-row span:first-child { color: #9aa3b5; }
+.insp-value { text-align: right; }
+
+#inspector button.demolish {
+  margin-top: 8px;
+  width: 100%;
+  background: #5c333b;
+  border: 1px solid #7a4049;
+  color: #e8b4ba;
+  font-weight: 600;
+  font-size: 12px;
+  padding: 5px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+#inspector button.demolish:hover { background: #6d3b45; }
