@@ -9,7 +9,9 @@
 use std::path::Path;
 
 use city_protocol::{DerivedStats, Recipe};
-use city_simulation::{AssetCatalogue, AssetId, BuildingId, SaveAsset, SaveBuilding, WorldSave, WorldState, from_save};
+use city_simulation::{
+    from_save, AssetCatalogue, AssetId, BuildingId, SaveAsset, SaveBuilding, WorldSave, WorldState,
+};
 use rusqlite::{Connection, OptionalExtension, Transaction};
 
 pub(crate) const SCHEMA_VERSION: &str = "1";
@@ -55,6 +57,7 @@ pub(crate) fn seed_recipes() -> [Recipe; 3] {
             roof_color: "#3a3a3a".to_owned(),
             window_style: city_protocol::WindowStyle::Grid,
             seed: 11,
+            parts: Vec::new(),
         },
         Recipe {
             name: "Harbor Point Office".to_owned(),
@@ -66,6 +69,7 @@ pub(crate) fn seed_recipes() -> [Recipe; 3] {
             roof_color: "#2f2f38".to_owned(),
             window_style: city_protocol::WindowStyle::Stripes,
             seed: 22,
+            parts: Vec::new(),
         },
         Recipe {
             name: "Meridian Tower".to_owned(),
@@ -77,6 +81,7 @@ pub(crate) fn seed_recipes() -> [Recipe; 3] {
             roof_color: "#22242c".to_owned(),
             window_style: city_protocol::WindowStyle::Grid,
             seed: 33,
+            parts: Vec::new(),
         },
     ]
 }
@@ -93,8 +98,8 @@ impl Store {
             std::fs::create_dir_all(parent)
                 .map_err(|err| format!("cannot create data dir {}: {err}", parent.display()))?;
         }
-        let conn =
-            Connection::open(path).map_err(|err| format!("cannot open {}: {err}", path.display()))?;
+        let conn = Connection::open(path)
+            .map_err(|err| format!("cannot open {}: {err}", path.display()))?;
         let mode: String = conn
             .query_row("PRAGMA journal_mode=WAL", [], |row| row.get(0))
             .map_err(|err| format!("cannot enable WAL: {err}"))?;
@@ -115,7 +120,9 @@ impl Store {
 
     fn meta(&self, key: &str) -> Result<Option<String>, String> {
         self.conn
-            .query_row("SELECT value FROM meta WHERE key = ?1", [key], |row| row.get(0))
+            .query_row("SELECT value FROM meta WHERE key = ?1", [key], |row| {
+                row.get(0)
+            })
             .optional()
             .map_err(|err| format!("cannot read meta {key}: {err}"))
     }
@@ -160,21 +167,26 @@ impl Store {
         Self::set_meta(&tx, "tick", "0")?;
         Self::set_meta(&tx, "next_building_id", "1")?;
         Self::set_meta(&tx, "next_asset_id", "4")?;
-        tx.commit().map_err(|err| format!("cannot commit seed: {err}"))?;
+        tx.commit()
+            .map_err(|err| format!("cannot commit seed: {err}"))?;
         Ok(())
     }
 
     /// Reads the durable tables back into a `WorldSave` for boot/resync.
     pub(crate) fn load(&self) -> Result<WorldSave, String> {
         let tick = self.meta("tick")?.ok_or("meta missing tick")?;
-        let tick = tick.parse().map_err(|_| format!("meta tick {tick:?} is not u64"))?;
+        let tick = tick
+            .parse()
+            .map_err(|_| format!("meta tick {tick:?} is not u64"))?;
         let next_building_id = self
             .meta("next_building_id")?
             .ok_or("meta missing next_building_id")?;
         let next_building_id = next_building_id
             .parse()
             .map_err(|_| format!("meta next_building_id {next_building_id:?} is not u64"))?;
-        let next_asset_id = self.meta("next_asset_id")?.ok_or("meta missing next_asset_id")?;
+        let next_asset_id = self
+            .meta("next_asset_id")?
+            .ok_or("meta missing next_asset_id")?;
         let next_asset_id = next_asset_id
             .parse()
             .map_err(|_| format!("meta next_asset_id {next_asset_id:?} is not u64"))?;
@@ -185,12 +197,7 @@ impl Store {
             .map_err(|err| format!("cannot read assets: {err}"))?;
         let asset_rows: Vec<(i64, String, i64, i64)> = statement
             .query_map([], |row| {
-                Ok((
-                    row.get(0)?,
-                    row.get(1)?,
-                    row.get(2)?,
-                    row.get(3)?,
-                ))
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
             })
             .map_err(|err| format!("cannot read assets: {err}"))?
             .collect::<Result<Vec<_>, _>>()
@@ -212,7 +219,9 @@ impl Store {
 
         let mut statement = self
             .conn
-            .prepare("SELECT id, def_id, revision, cell_x, cell_y, rotation FROM buildings ORDER BY id")
+            .prepare(
+                "SELECT id, def_id, revision, cell_x, cell_y, rotation FROM buildings ORDER BY id",
+            )
             .map_err(|err| format!("cannot read buildings: {err}"))?;
         let buildings = statement
             .query_map([], |row| {
@@ -264,8 +273,9 @@ impl Store {
         match row {
             None => Ok(None),
             Some((payload, outcome_json)) => {
-                let outcome = serde_json::from_str(&outcome_json)
-                    .map_err(|err| format!("receipt {command_id} has corrupt outcome_json: {err}"))?;
+                let outcome = serde_json::from_str(&outcome_json).map_err(|err| {
+                    format!("receipt {command_id} has corrupt outcome_json: {err}")
+                })?;
                 Ok(Some((payload, outcome)))
             }
         }
@@ -302,7 +312,8 @@ impl Store {
         .map_err(|err| format!("cannot insert building {}: {err}", building.id.0))?;
         Self::set_meta(&tx, "next_building_id", &next_building_id.to_string())?;
         Self::insert_receipt(&tx, command_id, payload, outcome)?;
-        tx.commit().map_err(|err| format!("cannot commit placement: {err}"))?;
+        tx.commit()
+            .map_err(|err| format!("cannot commit placement: {err}"))?;
         Ok(())
     }
 
@@ -318,15 +329,24 @@ impl Store {
             .conn
             .unchecked_transaction()
             .map_err(|err| format!("cannot begin transaction: {err}"))?;
-        tx.execute("DELETE FROM buildings WHERE id = ?1", [building_id.0 as i64])
-            .map_err(|err| format!("cannot delete building {}: {err}", building_id.0))?;
+        tx.execute(
+            "DELETE FROM buildings WHERE id = ?1",
+            [building_id.0 as i64],
+        )
+        .map_err(|err| format!("cannot delete building {}: {err}", building_id.0))?;
         Self::insert_receipt(&tx, command_id, payload, outcome)?;
-        tx.commit().map_err(|err| format!("cannot commit demolition: {err}"))?;
+        tx.commit()
+            .map_err(|err| format!("cannot commit demolition: {err}"))?;
         Ok(())
     }
 
     /// One transaction: asset row + meta counter.
-    pub(crate) fn commit_asset(&self, id: AssetId, recipe: &Recipe, derived: &DerivedStats) -> Result<(), String> {
+    pub(crate) fn commit_asset(
+        &self,
+        id: AssetId,
+        recipe: &Recipe,
+        derived: &DerivedStats,
+    ) -> Result<(), String> {
         let tx = self
             .conn
             .unchecked_transaction()
@@ -342,7 +362,26 @@ impl Store {
         )
         .map_err(|err| format!("cannot insert asset {}: {err}", id.0))?;
         Self::set_meta(&tx, "next_asset_id", &(id.0 + 1).to_string())?;
-        tx.commit().map_err(|err| format!("cannot commit asset: {err}"))?;
+        tx.commit()
+            .map_err(|err| format!("cannot commit asset: {err}"))?;
+        Ok(())
+    }
+
+    /// One transaction: asset row removal. The caller refuses removal while
+    /// placed buildings still reference the definition.
+    pub(crate) fn commit_asset_removal(&self, id: AssetId) -> Result<(), String> {
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|err| format!("cannot begin transaction: {err}"))?;
+        let changed = tx
+            .execute("DELETE FROM assets WHERE id = ?1", [id.0 as i64])
+            .map_err(|err| format!("cannot delete asset {}: {err}", id.0))?;
+        if changed == 0 {
+            return Err(format!("asset {} does not exist", id.0));
+        }
+        tx.commit()
+            .map_err(|err| format!("cannot commit asset removal: {err}"))?;
         Ok(())
     }
 
@@ -359,7 +398,8 @@ impl Store {
             .unchecked_transaction()
             .map_err(|err| format!("cannot begin transaction: {err}"))?;
         Self::insert_receipt(&tx, command_id, payload, outcome)?;
-        tx.commit().map_err(|err| format!("cannot commit rejection: {err}"))?;
+        tx.commit()
+            .map_err(|err| format!("cannot commit rejection: {err}"))?;
         Ok(())
     }
 
@@ -429,7 +469,10 @@ mod tests {
         // Meta counters per contract.
         assert_eq!(store.meta("schema_version").unwrap().as_deref(), Some("1"));
         assert_eq!(store.meta("tick").unwrap().as_deref(), Some("0"));
-        assert_eq!(store.meta("next_building_id").unwrap().as_deref(), Some("1"));
+        assert_eq!(
+            store.meta("next_building_id").unwrap().as_deref(),
+            Some("1")
+        );
         assert_eq!(store.meta("next_asset_id").unwrap().as_deref(), Some("4"));
 
         let save = store.load().unwrap();
@@ -476,7 +519,9 @@ mod tests {
             command_id: "p1".to_owned(),
             building_id: "1".to_owned(),
         };
-        store.commit_place(&building, 2, "p1", payload, &outcome).unwrap();
+        store
+            .commit_place(&building, 2, "p1", payload, &outcome)
+            .unwrap();
 
         let save = store.load().unwrap();
         assert_eq!(save.buildings.len(), 1);
@@ -495,7 +540,10 @@ mod tests {
             .unwrap();
         let save = store.load().unwrap();
         assert!(save.buildings.is_empty());
-        assert_eq!(save.next_asset_id, 4, "asset counter untouched by building commits");
+        assert_eq!(
+            save.next_asset_id, 4,
+            "asset counter untouched by building commits"
+        );
         assert!(store.receipt("p1").unwrap().is_some());
         assert!(store.receipt("d1").unwrap().is_some());
     }

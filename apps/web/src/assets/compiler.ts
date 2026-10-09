@@ -8,13 +8,14 @@
 import {
   Color3,
   DynamicTexture,
+  ICanvasRenderingContext,
   Mesh,
   MeshBuilder,
   Scene,
   StandardMaterial,
+  VertexData,
   Vector4,
 } from "@babylonjs/core";
-import type { ICanvasRenderingContext } from "@babylonjs/core";
 import type { AssetDefinitionTS, WindowStyleTS } from "../protocol/types";
 
 export interface CompiledPrototype {
@@ -169,6 +170,7 @@ function drawFacade(
 }
 
 export function compilePrototype(def: AssetDefinitionTS, scene: Scene): CompiledPrototype {
+  if (def.recipe.parts.length > 0) return compilePartsPrototype(def, scene);
   const recipe = def.recipe;
   const w = recipe.footprint_w;
   const h = recipe.footprint_h;
@@ -316,4 +318,81 @@ export function compilePrototype(def: AssetDefinitionTS, scene: Scene): Compiled
   merged.name = `prototype_${def.id}_r${def.revision}`;
   merged.material = material;
   return { mesh: merged, triangleCount: merged.getTotalIndices() / 3, materialCount: 1 };
+}
+
+// ---- authored-parts path (Asset Studio blueprints) ----
+// Parts are metre-space boxes/prisms/cylinders relative to the footprint's min
+// corner, straight from the wire. One material per distinct color; everything
+// merges into a single mesh with a multi-material.
+
+/** Triangular prism, ridge along local x, base y=0, centered on x/z. */
+function gableMesh(name: string, w: number, h: number, d: number, scene: Scene): Mesh {
+  const hw = w / 2;
+  const hd = d / 2;
+  const A = [-hw, 0, -hd];
+  const B = [hw, 0, -hd];
+  const C = [hw, 0, hd];
+  const D = [-hw, 0, hd];
+  const R0 = [-hw, h, 0];
+  const R1 = [hw, h, 0];
+  const positions = [
+    ...D, ...C, ...R1, // south slope
+    ...D, ...R1, ...R0,
+    ...B, ...A, ...R0, // north slope
+    ...B, ...R0, ...R1,
+    ...C, ...B, ...R1, // east end
+    ...A, ...D, ...R0, // west end
+  ];
+  const uvs = new Array<number>((positions.length / 3) * 2).fill(0);
+  const mesh = new Mesh(name, scene);
+  const data = new VertexData();
+  data.positions = positions;
+  data.indices = positions.map((_, i) => i);
+  data.uvs = uvs;
+  data.applyToMesh(mesh);
+  return mesh;
+}
+
+function compilePartsPrototype(def: AssetDefinitionTS, scene: Scene): CompiledPrototype {
+  const recipe = def.recipe;
+  const fw = recipe.footprint_w;
+  const fh = recipe.footprint_h;
+  const materials = new Map<string, StandardMaterial>();
+  const materialFor = (hex: string): StandardMaterial => {
+    const found = materials.get(hex);
+    if (found) return found;
+    const material = new StandardMaterial(`mat_${def.id}_r${def.revision}_${hex}`, scene);
+    material.diffuseColor = Color3.FromHexString(hex);
+    material.specularColor = new Color3(0.04, 0.04, 0.04);
+    materials.set(hex, material);
+    return material;
+  };
+
+  const parts: Mesh[] = [];
+  for (const [index, part] of recipe.parts.entries()) {
+    const kind = part.kind === "" ? "box" : part.kind;
+    const mesh =
+      kind === "roof_gable"
+        ? gableMesh(`p${index}`, part.w, part.h, part.d, scene)
+        : kind === "cylinder"
+          ? MeshBuilder.CreateCylinder(
+              `p${index}`,
+              { diameter: Math.min(part.w, part.d), height: part.h, tessellation: 12 },
+              scene,
+            )
+          : MeshBuilder.CreateBox(`p${index}`, { width: part.w, height: part.h, depth: part.d }, scene);
+    mesh.position.set(
+      part.x + part.w / 2 - fw / 2,
+      part.y + part.h / 2,
+      part.z + part.d / 2 - fh / 2,
+    );
+    mesh.material = materialFor(part.color);
+    parts.push(mesh);
+  }
+
+  // multiMultiMaterial=true keeps one sub-mesh per source material.
+  const merged = Mesh.MergeMeshes(parts, true, true, undefined, false, true);
+  if (!merged) throw new Error(`compilePrototype: parts merge failed for definition ${def.id}`);
+  merged.name = `prototype_${def.id}_r${def.revision}`;
+  return { mesh: merged, triangleCount: merged.getTotalIndices() / 3, materialCount: materials.size };
 }

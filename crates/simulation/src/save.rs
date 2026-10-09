@@ -109,9 +109,12 @@ pub fn from_save(save: &WorldSave) -> Result<(WorldState, AssetCatalogue), Strin
                 record.id, record.rotation
             ));
         }
-        let def = catalogue
-            .get(AssetId(record.def_id))
-            .ok_or_else(|| format!("building {} references unknown asset {}", record.id, record.def_id))?;
+        let def = catalogue.get(AssetId(record.def_id)).ok_or_else(|| {
+            format!(
+                "building {} references unknown asset {}",
+                record.id, record.def_id
+            )
+        })?;
         let cells = footprint(
             record.cell,
             def.recipe.footprint_w,
@@ -170,6 +173,7 @@ mod tests {
             roof_color: "#3a3a3a".into(),
             window_style: WindowStyle::Grid,
             seed: 11,
+            parts: Vec::new(),
         }
     }
 
@@ -184,6 +188,7 @@ mod tests {
             roof_color: "#22242c".into(),
             window_style: WindowStyle::Grid,
             seed: 33,
+            parts: Vec::new(),
         }
     }
 
@@ -240,7 +245,10 @@ mod tests {
             restored_world.peek_next_building_id(),
             world.peek_next_building_id()
         );
-        assert_eq!(restored_world.peek_next_asset_id(), world.peek_next_asset_id());
+        assert_eq!(
+            restored_world.peek_next_asset_id(),
+            world.peek_next_asset_id()
+        );
         assert_eq!(
             restored_catalogue.iter().collect::<Vec<_>>(),
             catalogue.iter().collect::<Vec<_>>()

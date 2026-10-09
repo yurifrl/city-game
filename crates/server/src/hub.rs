@@ -17,13 +17,21 @@ pub(crate) const OUTBOX_CAPACITY: usize = 64;
 pub(crate) type ConnectionId = u64;
 
 pub(crate) enum HubMsg {
-    Register { conn: ConnectionId, out: mpsc::Sender<ServerMessage> },
-    Unregister { conn: ConnectionId },
+    Register {
+        conn: ConnectionId,
+        out: mpsc::Sender<ServerMessage>,
+    },
+    Unregister {
+        conn: ConnectionId,
+    },
     /// Delivered to every registered connection. Delivery order per socket
     /// equals world commit order (single runner feeds the hub in order).
     Broadcast(ServerMessage),
     /// Delivered to one connection only (command results).
-    Direct { conn: ConnectionId, msg: ServerMessage },
+    Direct {
+        conn: ConnectionId,
+        msg: ServerMessage,
+    },
 }
 
 pub(crate) type HubHandle = mpsc::Sender<HubMsg>;
@@ -50,16 +58,14 @@ pub(crate) async fn run(mut rx: mpsc::Receiver<HubMsg>) {
                     }
                 });
             }
-            HubMsg::Direct { conn, msg } => {
-                match connections.get(&conn) {
-                    Some(out) => {
-                        if out.try_send(msg.clone()).is_err() {
-                            connections.remove(&conn);
-                        }
+            HubMsg::Direct { conn, msg } => match connections.get(&conn) {
+                Some(out) => {
+                    if out.try_send(msg.clone()).is_err() {
+                        connections.remove(&conn);
                     }
-                    None => eprintln!("hub: direct message for unknown connection {conn}"),
                 }
-            }
+                None => eprintln!("hub: direct message for unknown connection {conn}"),
+            },
         }
     }
 }

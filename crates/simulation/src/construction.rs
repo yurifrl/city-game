@@ -115,9 +115,13 @@ mod tests {
                 base_color: "#b5654f".into(),
                 roof_color: "#3a3a3a".into(),
                 window_style: WindowStyle::Grid,
-                seed: 1,
+                seed: 11,
+                parts: Vec::new(),
             },
-            derived: DerivedStats { capacity: 0, cost_credits: 0 },
+            derived: DerivedStats {
+                capacity: 0,
+                cost_credits: 0,
+            },
         }
     }
 
@@ -198,14 +202,21 @@ mod tests {
     fn overlap_rejection_carries_the_conflicting_building_id() {
         let mut world = WorldState::new();
         let definition = def(3, 2);
-        let first = apply_placement(&mut world, &definition, &placement(Cell { x: 10, y: 10 }, 0), BuildingId(1));
+        let first = apply_placement(
+            &mut world,
+            &definition,
+            &placement(Cell { x: 10, y: 10 }, 0),
+            BuildingId(1),
+        );
 
         // 2×2 at (11,11) covers (11,11), (12,11), (11,12), (12,12) — all inside
         // the first building's 3×2 box, so the conflict id must be building 1.
         let overlapping = placement(Cell { x: 11, y: 11 }, 0);
         assert_eq!(
             validate_placement(&world, &definition, &overlapping),
-            Err(Reject::Overlap { conflicting: BuildingId(1) })
+            Err(Reject::Overlap {
+                conflicting: BuildingId(1)
+            })
         );
 
         // Touching but not overlapping is legal.
@@ -219,14 +230,21 @@ mod tests {
     fn placement_needs_the_whole_footprint_free() {
         let mut world = WorldState::new();
         let definition = def(2, 2);
-        apply_placement(&mut world, &definition, &placement(Cell { x: 10, y: 10 }, 0), BuildingId(1));
+        apply_placement(
+            &mut world,
+            &definition,
+            &placement(Cell { x: 10, y: 10 }, 0),
+            BuildingId(1),
+        );
 
         // Only the far corner touches the existing building, but the whole
         // footprint must still be free.
         let corner_touch = placement(Cell { x: 9, y: 9 }, 0);
         assert_eq!(
             validate_placement(&world, &definition, &corner_touch),
-            Err(Reject::Overlap { conflicting: BuildingId(1) })
+            Err(Reject::Overlap {
+                conflicting: BuildingId(1)
+            })
         );
     }
 
@@ -239,7 +257,12 @@ mod tests {
             let mut expected: BTreeMap<(i32, i32), BuildingId> = BTreeMap::new();
             for building in world.buildings() {
                 let recipe = &catalogue.get(building.def_id).expect("known def").recipe;
-                for cell in footprint(building.origin, recipe.footprint_w, recipe.footprint_h, building.rotation) {
+                for cell in footprint(
+                    building.origin,
+                    recipe.footprint_w,
+                    recipe.footprint_h,
+                    building.rotation,
+                ) {
                     let previous = expected.insert((cell.x, cell.y), building.id);
                     assert!(previous.is_none(), "two buildings share cell {cell:?}");
                 }
@@ -261,9 +284,24 @@ mod tests {
         catalogue.insert(AssetId(1), def(3, 2));
         let definition = catalogue.get(AssetId(1)).unwrap();
 
-        apply_placement(&mut world, definition, &placement(Cell { x: 4, y: 4 }, 0), BuildingId(1));
-        apply_placement(&mut world, definition, &placement(Cell { x: 10, y: 4 }, 1), BuildingId(2));
-        apply_placement(&mut world, definition, &placement(Cell { x: 4, y: 8 }, 0), BuildingId(3));
+        apply_placement(
+            &mut world,
+            definition,
+            &placement(Cell { x: 4, y: 4 }, 0),
+            BuildingId(1),
+        );
+        apply_placement(
+            &mut world,
+            definition,
+            &placement(Cell { x: 10, y: 4 }, 1),
+            BuildingId(2),
+        );
+        apply_placement(
+            &mut world,
+            definition,
+            &placement(Cell { x: 4, y: 8 }, 0),
+            BuildingId(3),
+        );
         assert_index_agrees(&world, &catalogue);
 
         let demolished = apply_demolition(&mut world, BuildingId(2)).unwrap();
@@ -271,17 +309,29 @@ mod tests {
         assert_index_agrees(&world, &catalogue);
 
         // The freed cells accept a new rotated placement.
-        apply_placement(&mut world, definition, &placement(Cell { x: 10, y: 4 }, 3), BuildingId(4));
+        apply_placement(
+            &mut world,
+            definition,
+            &placement(Cell { x: 10, y: 4 }, 3),
+            BuildingId(4),
+        );
         assert_index_agrees(&world, &catalogue);
 
         // A placement overlapping building 1 is refused and not applied.
         assert_eq!(
             validate_placement(&world, definition, &placement(Cell { x: 5, y: 4 }, 0)),
-            Err(Reject::Overlap { conflicting: BuildingId(1) })
+            Err(Reject::Overlap {
+                conflicting: BuildingId(1)
+            })
         );
 
         apply_demolition(&mut world, BuildingId(1)).unwrap();
-        apply_placement(&mut world, definition, &placement(Cell { x: 5, y: 4 }, 0), BuildingId(5));
+        apply_placement(
+            &mut world,
+            definition,
+            &placement(Cell { x: 5, y: 4 }, 0),
+            BuildingId(5),
+        );
         assert_index_agrees(&world, &catalogue);
 
         // Demolishing an unknown building is an explicit error.
@@ -298,7 +348,12 @@ mod tests {
     fn applied_buildings_carry_the_placement_data() {
         let mut world = WorldState::new();
         let definition = def(3, 2);
-        let building = apply_placement(&mut world, &definition, &placement(Cell { x: 4, y: 5 }, 1), BuildingId(9));
+        let building = apply_placement(
+            &mut world,
+            &definition,
+            &placement(Cell { x: 4, y: 5 }, 1),
+            BuildingId(9),
+        );
         assert_eq!(
             building,
             Building {

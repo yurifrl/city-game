@@ -2,8 +2,8 @@
 //! are normative, so every frame here must roundtrip byte for byte.
 
 use city_protocol::{
-    Archetype, AssetDefinition, BuildingDto, Cell, ClientMessage, Command, CommandResult, DerivedStats,
-    Event, GridDto, Recipe, RejectCode, ServerMessage, WindowStyle, WorldDto,
+    Archetype, AssetDefinition, BuildingDto, Cell, ClientMessage, Command, CommandResult,
+    DerivedStats, Event, GridDto, Recipe, RejectCode, ServerMessage, WindowStyle, WorldDto,
 };
 
 fn cedar() -> Recipe {
@@ -17,6 +17,7 @@ fn cedar() -> Recipe {
         roof_color: "#3a3a3a".into(),
         window_style: WindowStyle::Grid,
         seed: 11,
+        parts: Vec::new(),
     }
 }
 
@@ -94,7 +95,10 @@ fn wire_ids_stay_decimal_strings() {
         revision: 1,
         cell: Cell { x: 1, y: 2 },
         rotation: 0,
-        derived: DerivedStats { capacity: 2, cost_credits: 2160 },
+        derived: DerivedStats {
+            capacity: 2,
+            cost_credits: 2160,
+        },
     };
     let json = serde_json::to_string(&dto).unwrap();
     assert!(json.contains(r#""id":"9007199254740993""#), "got: {json}");
@@ -105,7 +109,10 @@ fn wire_ids_stay_decimal_strings() {
 #[test]
 fn hello_frame_matches_contract_shape() {
     let world = WorldDto {
-        grid: GridDto { width: 96, height: 96 },
+        grid: GridDto {
+            width: 96,
+            height: 96,
+        },
         tick: 0,
         buildings: vec![],
         definitions: vec![],
@@ -135,7 +142,10 @@ fn event_frames_match_contract_shapes() {
         revision: 1,
         cell: Cell { x: 10, y: 12 },
         rotation: 0,
-        derived: DerivedStats { capacity: 2, cost_credits: 2160 },
+        derived: DerivedStats {
+            capacity: 2,
+            cost_credits: 2160,
+        },
     };
     assert_eq!(
         serde_json::to_string(&ServerMessage::Event {
@@ -163,7 +173,10 @@ fn event_frames_match_contract_shapes() {
                 id: "1".into(),
                 revision: 1,
                 recipe: cedar(),
-                derived: DerivedStats { capacity: 2, cost_credits: 2160 },
+                derived: DerivedStats {
+                    capacity: 2,
+                    cost_credits: 2160,
+                },
             },
         },
     };
@@ -186,6 +199,7 @@ fn event_frames_match_contract_shapes() {
                         "roof_color": "#3a3a3a",
                         "window_style": "grid",
                         "seed": 11,
+                        "parts": [],
                     },
                     "derived": { "capacity": 2, "cost_credits": 2160 },
                 },
@@ -242,10 +256,16 @@ fn reject_codes_serialize_snake_case() {
         (RejectCode::OutOfBounds, "out_of_bounds"),
         (RejectCode::UnknownAsset, "unknown_asset"),
         (RejectCode::UnknownBuilding, "unknown_building"),
-        (RejectCode::DuplicateIdentityConflict, "duplicate_identity_conflict"),
+        (
+            RejectCode::DuplicateIdentityConflict,
+            "duplicate_identity_conflict",
+        ),
         (RejectCode::BadRequest, "bad_request"),
     ] {
-        assert_eq!(serde_json::to_string(&code).unwrap(), format!(r#""{wire}""#));
+        assert_eq!(
+            serde_json::to_string(&code).unwrap(),
+            format!(r#""{wire}""#)
+        );
     }
 }
 

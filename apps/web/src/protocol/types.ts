@@ -13,6 +13,18 @@ export interface CellTS {
 export type ArchetypeTS = "house" | "shop" | "office" | "tower";
 export type WindowStyleTS = "grid" | "stripes";
 
+/** One authored piece of an asset (metres, relative to footprint min corner). */
+export interface AssetPartTS {
+  kind: string;
+  x: number;
+  y: number;
+  z: number;
+  w: number;
+  h: number;
+  d: number;
+  color: string;
+}
+
 export interface RecipeTS {
   name: string;
   archetype: ArchetypeTS;
@@ -23,6 +35,7 @@ export interface RecipeTS {
   roof_color: string;
   window_style: WindowStyleTS;
   seed: number;
+  parts: AssetPartTS[];
 }
 
 export interface DerivedStatsTS {
@@ -90,7 +103,8 @@ export interface ClientMessageTS {
 export type EventTS =
   | { type: "building_placed"; building: BuildingTS }
   | { type: "building_demolished"; building_id: string }
-  | { type: "definition_published"; definition: AssetDefinitionTS };
+  | { type: "definition_published"; definition: AssetDefinitionTS }
+  | { type: "definition_removed"; def_id: string };
 
 /** `conflicting_building_id` is omitted on the wire when null. */
 export type CommandResultTS =
@@ -102,7 +116,6 @@ export type CommandResultTS =
   | {
       result: "rejected";
       command_id: string;
-      code: RejectCodeTS;
       message: string;
       conflicting_building_id: string | null;
     };

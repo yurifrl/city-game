@@ -7,7 +7,7 @@
 
 use city_protocol as wire;
 use city_simulation::{
-    AssetCatalogue, AssetId, ApprovedDefinition, Building, Cell, Reject, WorldState,
+    ApprovedDefinition, AssetCatalogue, AssetId, Building, Cell, Reject, WorldState,
 };
 
 /// Definitions are immutable once published; M1 publishes each new recipe
@@ -147,7 +147,10 @@ pub(crate) fn parse_placement(
     Ok(city_simulation::Placement {
         def_id: AssetId(def_id),
         revision,
-        origin: Cell { x: cell.x, y: cell.y },
+        origin: Cell {
+            x: cell.x,
+            y: cell.y,
+        },
         rotation,
     })
 }
@@ -200,7 +203,9 @@ fn bad_request_message(command_id: &str, err: &serde_json::Error) -> wire::Serve
     wire::ServerMessage::CommandResult {
         result: bad_request(
             command_id,
-            format!("malformed message, expected {{\"type\":\"command\",\"command\":{{...}}}}: {err}"),
+            format!(
+                "malformed message, expected {{\"type\":\"command\",\"command\":{{...}}}}: {err}"
+            ),
         ),
     }
 }
@@ -235,7 +240,12 @@ mod tests {
         let wire::ServerMessage::CommandResult { result } = message else {
             panic!("expected command result");
         };
-        let wire::CommandResult::Rejected { command_id, code, conflicting_building_id, .. } = result
+        let wire::CommandResult::Rejected {
+            command_id,
+            code,
+            conflicting_building_id,
+            ..
+        } = result
         else {
             panic!("expected rejection");
         };
@@ -251,7 +261,10 @@ mod tests {
         let wire::ServerMessage::CommandResult { result } = message else {
             panic!("expected command result");
         };
-        let wire::CommandResult::Rejected { command_id, code, .. } = result else {
+        let wire::CommandResult::Rejected {
+            command_id, code, ..
+        } = result
+        else {
             panic!("expected rejection");
         };
         assert_eq!(command_id, "c7");
@@ -275,7 +288,9 @@ mod tests {
         assert_eq!(canonical_command(&a), canonical_command(&b));
         // A different payload under the same id must differ.
         let mut c = a.clone();
-        let Command::PlaceBuilding { cell, .. } = &mut c else { panic!() };
+        let Command::PlaceBuilding { cell, .. } = &mut c else {
+            panic!()
+        };
         cell.x = 5;
         assert_ne!(canonical_command(&a), canonical_command(&c));
     }
@@ -285,7 +300,9 @@ mod tests {
         assert!(parse_placement("abc", 1, wire::Cell { x: 0, y: 0 }, 0).is_err());
         assert!(parse_placement("1", 2, wire::Cell { x: 0, y: 0 }, 0).is_err());
         assert!(parse_placement("1", 1, wire::Cell { x: 0, y: 0 }, 4).is_err());
-        let placement = parse_placement("3", 1, wire::Cell { x: -1, y: 20 }, 3).ok().unwrap();
+        let placement = parse_placement("3", 1, wire::Cell { x: -1, y: 20 }, 3)
+            .ok()
+            .unwrap();
         assert_eq!(placement.def_id, AssetId(3));
         assert_eq!(placement.revision, 1);
         assert_eq!(placement.origin, Cell { x: -1, y: 20 });
@@ -304,8 +321,18 @@ mod tests {
 
     #[test]
     fn reject_mapping_carries_conflicting_building() {
-        let result = reject_result("c1", Reject::Overlap { conflicting: BuildingId(3) });
-        let wire::CommandResult::Rejected { code, message, conflicting_building_id, .. } = result
+        let result = reject_result(
+            "c1",
+            Reject::Overlap {
+                conflicting: BuildingId(3),
+            },
+        );
+        let wire::CommandResult::Rejected {
+            code,
+            message,
+            conflicting_building_id,
+            ..
+        } = result
         else {
             panic!("expected rejection");
         };

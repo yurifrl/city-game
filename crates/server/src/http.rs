@@ -1,10 +1,10 @@
 //! HTTP surface: static SPA hosting, asset endpoints, WS upgrade.
 
 use axum::extract::ws::WebSocketUpgrade;
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{any, get};
+use axum::routing::{any, delete, get};
 use axum::{Json, Router};
 use city_protocol::Recipe;
 use serde::Serialize;
@@ -36,6 +36,7 @@ pub(crate) fn router(app: App, dist_dir: &str) -> Router {
     let static_service = ServeDir::new(dist_dir).fallback(ServeFile::new(index));
     Router::new()
         .route("/api/assets", get(assets_get).post(assets_post))
+        .route("/api/assets/{id}", delete(assets_delete))
         .route("/ws", get(ws_upgrade))
         .route("/api/{*rest}", any(api_not_found))
         .fallback_service(static_service)
@@ -50,13 +51,24 @@ async fn api_not_found() -> Response {
 /// catalogue has exactly one source of truth.
 async fn assets_get(State(app): State<App>) -> Response {
     let (tx, rx) = oneshot::channel();
-    if app.world_tx.send(WorldRequest::Snapshot { reply: tx }).await.is_err() {
+    if app
+        .world_tx
+        .send(WorldRequest::Snapshot { reply: tx })
+        .await
+        .is_err()
+    {
         return service_unavailable();
     }
     let Ok(dto) = rx.await else {
         return service_unavailable();
     };
-    (StatusCode::OK, Json(DefinitionsResponse { definitions: dto.definitions })).into_response()
+    (
+        StatusCode::OK,
+        Json(DefinitionsResponse {
+            definitions: dto.definitions,
+        }),
+    )
+        .into_response()
 }
 
 /// `POST /api/assets` body = Recipe JSON. 200 = full published definition
@@ -83,7 +95,42 @@ async fn assets_post(State(app): State<App>, body: String) -> Response {
     }
     match rx.await {
         Ok(Ok(definition)) => (StatusCode::OK, Json(definition)).into_response(),
-        Ok(Err(errors)) => (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "errors": errors })))
+        Ok(Err(errors)) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "errors": errors })),
+        )
+            .into_response(),
+        Err(_) => service_unavailable(),
+    }
+}
+
+/// `DELETE /api/assets/{id}`. 200 = removed (persisted, broadcast);
+/// 409 = refused (`{"errors":[...]}` — unknown id or placed buildings).
+async fn assets_delete(State(app): State<App>, Path(id): Path<String>) -> Response {
+    let Ok(def_id) = id.parse::<u64>() else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "errors": [format!("def id {id:?} is not a number")] })),
+        )
+            .into_response();
+    };
+    let (tx, rx) = oneshot::channel();
+    if app
+        .world_tx
+        .send(WorldRequest::RemoveDefinition { def_id, reply: tx })
+        .await
+        .is_err()
+    {
+        return service_unavailable();
+    }
+    match rx.await {
+        Ok(Ok(())) => {
+            (StatusCode::OK, Json(serde_json::json!({ "removed": true }))).into_response()
+        }
+        Ok(Err(message)) => (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({ "errors": [message] })),
+        )
             .into_response(),
         Err(_) => service_unavailable(),
     }

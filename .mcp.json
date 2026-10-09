@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "asset-studio": {
+      "type": "http",
+      "url": "http://localhost:8200/mcp"
+    }
+  }
+}

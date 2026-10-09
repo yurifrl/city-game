@@ -41,9 +41,8 @@ fn cost_per_cell_floor(archetype: Archetype) -> u64 {
 /// Callers must have validated the recipe; the arithmetic only overflows far
 /// beyond the legal 8×8×40 maximum.
 fn derive_stats(recipe: &Recipe) -> DerivedStats {
-    let cell_floors = u64::from(recipe.footprint_w)
-        * u64::from(recipe.footprint_h)
-        * u64::from(recipe.floors);
+    let cell_floors =
+        u64::from(recipe.footprint_w) * u64::from(recipe.footprint_h) * u64::from(recipe.floors);
     DerivedStats {
         capacity: (cell_floors * density_hundredths(recipe.archetype) / 100) as u32,
         cost_credits: cell_floors * cost_per_cell_floor(recipe.archetype),
@@ -70,6 +69,12 @@ impl AssetCatalogue {
         self.definitions.get(&id)
     }
 
+    /// Removes and returns a definition. The placed-buildings check belongs
+    /// to the caller (it owns the world), so removal is total here.
+    pub fn remove(&mut self, id: AssetId) -> Option<ApprovedDefinition> {
+        self.definitions.remove(&id)
+    }
+
     /// All definitions in ascending id order.
     pub fn iter(&self) -> impl Iterator<Item = (AssetId, &ApprovedDefinition)> + '_ {
         self.definitions.iter().map(|(id, def)| (*id, def))
@@ -89,13 +94,19 @@ pub fn validate_recipe(recipe: &Recipe) -> Result<ApprovedDefinition, Vec<String
     if !(1..=64).contains(&name_chars) {
         errors.push(format!("name must be 1..=64 characters (got {name_chars})"));
     }
-    for (field, dim) in [("footprint_w", recipe.footprint_w), ("footprint_h", recipe.footprint_h)] {
+    for (field, dim) in [
+        ("footprint_w", recipe.footprint_w),
+        ("footprint_h", recipe.footprint_h),
+    ] {
         if !(1..=8).contains(&dim) {
             errors.push(format!("{field} must be within 1..=8 (got {dim})"));
         }
     }
     if !(1..=40).contains(&recipe.floors) {
-        errors.push(format!("floors must be within 1..=40 (got {})", recipe.floors));
+        errors.push(format!(
+            "floors must be within 1..=40 (got {})",
+            recipe.floors
+        ));
     }
     for (field, color) in [
         ("base_color", &recipe.base_color),
@@ -104,6 +115,53 @@ pub fn validate_recipe(recipe: &Recipe) -> Result<ApprovedDefinition, Vec<String
         if !is_hex_color(color) {
             errors.push(format!("{field} must match #rrggbb (got {color:?})"));
         }
+    }
+
+    // Authored-geometry rules. Parts are metres relative to the footprint's
+    // min corner; the +2 m allowance above the floor height covers rooftop
+    // clutter (AC units, tanks, antennas).
+    const MAX_PARTS: usize = 64;
+    const PART_MAX_DIM: f32 = 24.0;
+    let max_part_top = recipe.floors as f32 * 3.0 + 2.0;
+    if recipe.parts.len() > MAX_PARTS {
+        errors.push(format!(
+            "parts must have at most {MAX_PARTS} entries (got {})",
+            recipe.parts.len()
+        ));
+    }
+    for (index, part) in recipe.parts.iter().enumerate() {
+        let label = |what: String| format!("parts[{index}]: {what}");
+        if !(part.w > 0.0 && part.h > 0.0 && part.d > 0.0) {
+            errors.push(label("dimensions must be positive".to_owned()));
+        }
+        if part.w > PART_MAX_DIM || part.h > PART_MAX_DIM || part.d > PART_MAX_DIM {
+            errors.push(label(format!("dimensions must be within {PART_MAX_DIM} m")));
+        }
+        if part.x < 0.0 || part.x + part.w > recipe.footprint_w as f32 + 1e-3 {
+            errors.push(label("x extent reaches outside the footprint".to_owned()));
+        }
+        if part.z < 0.0 || part.z + part.d > recipe.footprint_h as f32 + 1e-3 {
+            errors.push(label("z extent reaches outside the footprint".to_owned()));
+        }
+        if part.y < 0.0 || part.y + part.h > max_part_top + 1e-3 {
+            errors.push(label(format!(
+                "y extent reaches above the {} m build height",
+                max_part_top as u32
+            )));
+        }
+        if !is_hex_color(&part.color) {
+            errors.push(label(format!(
+                "color must match #rrggbb (got {:?})",
+                part.color
+            )));
+        }
+        if part.kind.len() > 24 {
+            errors.push(label("kind must be at most 24 characters".to_owned()));
+        }
+    }
+
+    if !errors.is_empty() {
+        return Err(errors);
     }
 
     if !errors.is_empty() {
@@ -137,6 +195,7 @@ mod tests {
             roof_color: "#3a3a3a".into(),
             window_style: WindowStyle::Grid,
             seed: 11,
+            parts: Vec::new(),
         }
     }
 
@@ -149,7 +208,10 @@ mod tests {
         let approved = validate_recipe(&cedar()).unwrap();
         assert_eq!(
             approved.derived,
-            DerivedStats { capacity: 2, cost_credits: 2160 }
+            DerivedStats {
+                capacity: 2,
+                cost_credits: 2160
+            }
         );
         assert_eq!(approved.recipe, cedar());
 
@@ -163,12 +225,16 @@ mod tests {
             roof_color: "#2f2f38".into(),
             window_style: WindowStyle::Stripes,
             seed: 22,
+            parts: Vec::new(),
         };
         // office 3×3×8 = 72 cell·floors → floor(72 × 0.30) = 21; 72 × 260 = 18720
         let approved = validate_recipe(&harbor).unwrap();
         assert_eq!(
             approved.derived,
-            DerivedStats { capacity: 21, cost_credits: 18720 }
+            DerivedStats {
+                capacity: 21,
+                cost_credits: 18720
+            }
         );
 
         let meridian = Recipe {
@@ -181,12 +247,16 @@ mod tests {
             roof_color: "#22242c".into(),
             window_style: WindowStyle::Grid,
             seed: 33,
+            parts: Vec::new(),
         };
         // tower 2×2×24 = 96 cell·floors → floor(96 × 0.40) = 38; 96 × 340 = 32640
         let approved = validate_recipe(&meridian).unwrap();
         assert_eq!(
             approved.derived,
-            DerivedStats { capacity: 38, cost_credits: 32640 }
+            DerivedStats {
+                capacity: 38,
+                cost_credits: 32640
+            }
         );
     }
 
@@ -201,15 +271,65 @@ mod tests {
             base_color: "red".into(),
             roof_color: "#12345g".into(),
             window_style: WindowStyle::Stripes,
-            seed: 1,
+            seed: 7,
+            parts: Vec::new(),
         };
         let errors = validate_recipe(&bad).unwrap_err();
         assert_eq!(errors.len(), 6, "expected all violations, got {errors:?}");
-        for needle in ["name", "footprint_w", "footprint_h", "floors", "base_color", "roof_color"] {
+        for needle in [
+            "name",
+            "footprint_w",
+            "footprint_h",
+            "floors",
+            "base_color",
+            "roof_color",
+        ] {
             assert!(
                 errors.iter().any(|e| e.contains(needle)),
                 "missing {needle} violation in {errors:?}"
             );
+        }
+    }
+
+    fn part(x: f32, y: f32, z: f32, w: f32, h: f32, d: f32) -> city_protocol::AssetPart {
+        city_protocol::AssetPart {
+            kind: "box".into(),
+            x,
+            y,
+            z,
+            w,
+            h,
+            d,
+            color: "#c96f4a".into(),
+        }
+    }
+
+    #[test]
+    fn valid_parts_pass_and_keep_field_derivation() {
+        let mut recipe = cedar();
+        recipe.parts = vec![part(0.0, 0.0, 0.0, 3.0, 9.0, 2.0)];
+        let approved = validate_recipe(&recipe).unwrap();
+        // Stats still derive from the recipe fields, not the parts.
+        assert_eq!(approved.derived.capacity, 2);
+    }
+
+    #[test]
+    fn parts_violations_report_geometry_and_color() {
+        let mut recipe = cedar();
+        recipe.parts = vec![
+            part(-0.5, 0.0, 0.0, 1.0, 1.0, 1.0),   // x outside footprint
+            part(0.0, 0.0, 0.0, 4.0, 1.0, 1.0),    // x extent past footprint_w=3
+            part(0.0, 12.0, 0.0, 1.0, 1.0, 1.0),   // above 3 floors × 3 m + 2 m
+            part(0.0, 0.0, 0.0, 0.0, 1.0, 1.0),    // non-positive dimension
+            city_protocol::AssetPart {
+                color: "red".into(),
+                ..part(0.0, 0.0, 0.0, 1.0, 1.0, 1.0)
+            },
+        ];
+        let errors = validate_recipe(&recipe).unwrap_err();
+        assert_eq!(errors.len(), 5, "got {errors:?}");
+        for needle in ["parts[0]", "parts[1]", "parts[2]", "parts[3]", "parts[4]"] {
+            assert!(errors.iter().any(|e| e.contains(needle)), "missing {needle} in {errors:?}");
         }
     }
 

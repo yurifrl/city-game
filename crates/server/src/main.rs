@@ -3,15 +3,15 @@
 //! binds 127.0.0.1:8080, persists ./data/city.db, serves ./apps/web/dist.
 
 mod adapter;
-mod hub;
 mod http;
+mod hub;
 mod persistence;
 mod runner;
 mod ws;
 
 use std::path::Path;
 
-use city_simulation::{WorldState, AssetCatalogue};
+use city_simulation::{AssetCatalogue, WorldState};
 
 /// Contract binding (docs/contracts/milestone-1.md). `CITY_BIND` exists only
 /// so local smoke tests can avoid a port taken by an unrelated service.
@@ -49,7 +49,13 @@ async fn run() -> Result<(), String> {
     let (world_tx, world_rx) = tokio::sync::mpsc::channel(runner::QUEUE_CAPACITY);
     let (hub_tx, hub_rx) = tokio::sync::mpsc::channel(64);
     tokio::spawn(hub::run(hub_rx));
-    tokio::spawn(runner::run(world, catalogue, store, world_rx, hub_tx.clone()));
+    tokio::spawn(runner::run(
+        world,
+        catalogue,
+        store,
+        world_rx,
+        hub_tx.clone(),
+    ));
 
     let app = http::App {
         world_tx,

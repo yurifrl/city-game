@@ -31,14 +31,26 @@ pub(crate) const QUEUE_CAPACITY: usize = 256;
 
 pub(crate) enum WorldRequest {
     /// A parsed client command with its canonical receipt payload.
-    Command { conn: ConnectionId, command: wire::Command, canonical: String },
+    Command {
+        conn: ConnectionId,
+        command: wire::Command,
+        canonical: String,
+    },
     /// Publish a validated recipe through the single writer.
     PublishAsset {
         recipe: wire::Recipe,
         reply: oneshot::Sender<Result<wire::AssetDefinition, Vec<String>>>,
     },
+    /// Remove a catalogue definition (HTTP DELETE). Refused while placed
+    /// buildings still reference it.
+    RemoveDefinition {
+        def_id: u64,
+        reply: oneshot::Sender<Result<(), String>>,
+    },
     /// Full world snapshot for `hello` and `GET /api/assets`.
-    Snapshot { reply: oneshot::Sender<wire::WorldDto> },
+    Snapshot {
+        reply: oneshot::Sender<wire::WorldDto>,
+    },
 }
 
 /// Messages produced by one request: events for everyone, results for the
@@ -51,11 +63,17 @@ struct Emissions {
 
 impl Emissions {
     fn none() -> Emissions {
-        Emissions { broadcast: Vec::new(), direct: Vec::new() }
+        Emissions {
+            broadcast: Vec::new(),
+            direct: Vec::new(),
+        }
     }
 
     fn to_issuer(conn: ConnectionId, result: wire::CommandResult) -> Emissions {
-        Emissions { broadcast: Vec::new(), direct: vec![(conn, adapter::result_message(result))] }
+        Emissions {
+            broadcast: Vec::new(),
+            direct: vec![(conn, adapter::result_message(result))],
+        }
     }
 }
 
@@ -73,12 +91,17 @@ pub(crate) async fn run(
                 let _ = reply.send(adapter::world_dto(&world, &catalogue));
                 Emissions::none()
             }
+            WorldRequest::RemoveDefinition { def_id, reply } => {
+                remove_definition(&mut world, &mut catalogue, &store, def_id, reply)
+            }
             WorldRequest::PublishAsset { recipe, reply } => {
                 publish_asset(&mut world, &mut catalogue, &store, recipe, reply)
             }
-            WorldRequest::Command { conn, command, canonical } => {
-                execute_command(&mut world, &mut catalogue, &store, conn, command, canonical)
-            }
+            WorldRequest::Command {
+                conn,
+                command,
+                canonical,
+            } => execute_command(&mut world, &mut catalogue, &store, conn, command, canonical),
         };
         for msg in emissions.broadcast {
             send_broadcast(&hub, msg).await;
@@ -132,12 +155,34 @@ fn execute_command(
     }
 
     let (outcome, events) = match command {
-        wire::Command::PlaceBuilding { command_id, def_id, revision, cell, rotation } => place_building(
-            world, catalogue, store, &command_id, &def_id, revision, cell, rotation, &canonical,
+        wire::Command::PlaceBuilding {
+            command_id,
+            def_id,
+            revision,
+            cell,
+            rotation,
+        } => place_building(
+            world,
+            catalogue,
+            store,
+            &command_id,
+            &def_id,
+            revision,
+            cell,
+            rotation,
+            &canonical,
         ),
-        wire::Command::DemolishBuilding { command_id, building_id } => {
-            demolish_building(world, catalogue, store, &command_id, &building_id, &canonical)
-        }
+        wire::Command::DemolishBuilding {
+            command_id,
+            building_id,
+        } => demolish_building(
+            world,
+            catalogue,
+            store,
+            &command_id,
+            &building_id,
+            &canonical,
+        ),
     };
 
     Emissions {
@@ -159,8 +204,12 @@ fn place_building(
 ) -> (wire::CommandResult, Vec<wire::ServerMessage>) {
     let placement = match adapter::parse_placement(def_id, revision, cell, rotation) {
         Err(message) => {
-            let outcome =
-                receipt_rejection(store, command_id, canonical, adapter::bad_request(command_id, message));
+            let outcome = receipt_rejection(
+                store,
+                command_id,
+                canonical,
+                adapter::bad_request(command_id, message),
+            );
             return (outcome, Vec::new());
         }
         Ok(placement) => placement,
@@ -170,13 +219,20 @@ fn place_building(
             store,
             command_id,
             canonical,
-            adapter::reject_result(command_id, city_simulation::Reject::UnknownAsset(placement.def_id)),
+            adapter::reject_result(
+                command_id,
+                city_simulation::Reject::UnknownAsset(placement.def_id),
+            ),
         );
         return (outcome, Vec::new());
     };
     if let Err(reject) = city_simulation::validate_placement(world, def, &placement) {
-        let outcome =
-            receipt_rejection(store, command_id, canonical, adapter::reject_result(command_id, reject));
+        let outcome = receipt_rejection(
+            store,
+            command_id,
+            canonical,
+            adapter::reject_result(command_id, reject),
+        );
         return (outcome, Vec::new());
     }
 
@@ -188,12 +244,18 @@ fn place_building(
         command_id: command_id.to_owned(),
         building_id: adapter::wire_id(id.0),
     };
-    if let Err(err) =
-        store.commit_place(&building, world.peek_next_building_id(), command_id, canonical, &outcome)
-    {
+    if let Err(err) = store.commit_place(
+        &building,
+        world.peek_next_building_id(),
+        command_id,
+        canonical,
+        &outcome,
+    ) {
         resync_from_disk(world, catalogue, store, &err);
-        let outcome =
-            adapter::bad_request(command_id, "persistence failed; world resynchronized from database");
+        let outcome = adapter::bad_request(
+            command_id,
+            "persistence failed; world resynchronized from database",
+        );
         return (outcome, Vec::new());
     }
 
@@ -225,8 +287,12 @@ fn demolish_building(
     };
     let _removed = match city_simulation::apply_demolition(world, id) {
         Err(reject) => {
-            let outcome =
-                receipt_rejection(store, command_id, canonical, adapter::reject_result(command_id, reject));
+            let outcome = receipt_rejection(
+                store,
+                command_id,
+                canonical,
+                adapter::reject_result(command_id, reject),
+            );
             return (outcome, Vec::new());
         }
         Ok(removed) => removed,
@@ -237,8 +303,10 @@ fn demolish_building(
     };
     if let Err(err) = store.commit_demolish(id, command_id, canonical, &outcome) {
         resync_from_disk(world, catalogue, store, &err);
-        let outcome =
-            adapter::bad_request(command_id, "persistence failed; world resynchronized from database");
+        let outcome = adapter::bad_request(
+            command_id,
+            "persistence failed; world resynchronized from database",
+        );
         return (outcome, Vec::new());
     }
 
@@ -274,7 +342,9 @@ fn publish_asset(
     let definition = adapter::definition_dto(id, catalogue.get(id).expect("just inserted"));
     let _ = reply.send(Ok(definition.clone()));
     Emissions {
-        broadcast: vec![adapter::event_message(wire::Event::DefinitionPublished { definition })],
+        broadcast: vec![adapter::event_message(wire::Event::DefinitionPublished {
+            definition,
+        })],
         direct: Vec::new(),
     }
 }
@@ -292,11 +362,55 @@ fn receipt_rejection(
     outcome
 }
 
+/// Removal flow for `DELETE /api/assets/{id}`: refuse while any placed
+/// building still uses the definition, then one transaction → broadcast.
+fn remove_definition(
+    world: &mut WorldState,
+    catalogue: &mut AssetCatalogue,
+    store: &Store,
+    def_id: u64,
+    reply: oneshot::Sender<Result<(), String>>,
+) -> Emissions {
+    let id = city_simulation::AssetId(def_id);
+    if catalogue.get(id).is_none() {
+        let _ = reply.send(Err(format!("unknown definition {def_id}")));
+        return Emissions::none();
+    }
+    let placed = world
+        .buildings()
+        .filter(|building| building.def_id == id)
+        .count();
+    if placed > 0 {
+        let _ = reply.send(Err(format!(
+            "definition {def_id} still has {placed} placed building(s); demolish them first"
+        )));
+        return Emissions::none();
+    }
+    if let Err(err) = store.commit_asset_removal(id) {
+        resync_from_disk(world, catalogue, store, &err);
+        let _ = reply.send(Err(format!("persistence failed: {err}")));
+        return Emissions::none();
+    }
+    catalogue.remove(id);
+    let _ = reply.send(Ok(()));
+    Emissions {
+        broadcast: vec![adapter::event_message(wire::Event::DefinitionRemoved {
+            def_id: def_id.to_string(),
+        })],
+        direct: Vec::new(),
+    }
+}
+
 /// Resync path when a commit fails: the database is the source of truth, so
 /// reload state from it. Only reachable on IO failures (disk full, db
 /// corruption). If even the reload fails, stop the process — an
 /// authoritative server must never run on unknown state.
-fn resync_from_disk(world: &mut WorldState, catalogue: &mut AssetCatalogue, store: &Store, err: &str) {
+fn resync_from_disk(
+    world: &mut WorldState,
+    catalogue: &mut AssetCatalogue,
+    store: &Store,
+    err: &str,
+) {
     eprintln!("runner: commit failed: {err}; resynchronizing world from database");
     match store.reload() {
         Ok((loaded_world, loaded_catalogue)) => {
@@ -369,7 +483,11 @@ pub(crate) mod tests_support {
         pub(crate) async fn send_command(&self, command: wire::Command) {
             let canonical = adapter::canonical_command(&command);
             self.world_tx
-                .send(WorldRequest::Command { conn: self.conn, command, canonical })
+                .send(WorldRequest::Command {
+                    conn: self.conn,
+                    command,
+                    canonical,
+                })
                 .await
                 .expect("runner alive");
         }
@@ -403,9 +521,20 @@ pub(crate) mod tests_support {
 
         let conn = 1;
         let (out_tx, out_rx) = mpsc::channel(OUTBOX_CAPACITY);
-        hub_tx.send(HubMsg::Register { conn, out: out_tx }).await.expect("hub alive");
+        hub_tx
+            .send(HubMsg::Register { conn, out: out_tx })
+            .await
+            .expect("hub alive");
 
-        (TestHarness { world_tx, hub: hub_tx, out_rx, conn }, dir)
+        (
+            TestHarness {
+                world_tx,
+                hub: hub_tx,
+                out_rx,
+                conn,
+            },
+            dir,
+        )
     }
 }
 
@@ -417,14 +546,29 @@ mod tests {
     use city_simulation::GRID_WIDTH;
 
     /// Spawns a second runner on an already-opened store (for reload tests).
-    async fn spawn_on_store(world: WorldState, catalogue: AssetCatalogue, store: Store) -> TestHarness {
+    async fn spawn_on_store(
+        world: WorldState,
+        catalogue: AssetCatalogue,
+        store: Store,
+    ) -> TestHarness {
         let (world_tx, world_rx) = mpsc::channel(QUEUE_CAPACITY);
         let (hub_tx, hub_rx) = mpsc::channel(64);
         tokio::spawn(crate::hub::run(hub_rx));
         tokio::spawn(run(world, catalogue, store, world_rx, hub_tx.clone()));
         let (out_tx, out_rx) = mpsc::channel(crate::hub::OUTBOX_CAPACITY);
-        hub_tx.send(HubMsg::Register { conn: 1, out: out_tx }).await.unwrap();
-        TestHarness { world_tx, hub: hub_tx, out_rx, conn: 1 }
+        hub_tx
+            .send(HubMsg::Register {
+                conn: 1,
+                out: out_tx,
+            })
+            .await
+            .unwrap();
+        TestHarness {
+            world_tx,
+            hub: hub_tx,
+            out_rx,
+            conn: 1,
+        }
     }
 
     fn place(command_id: &str, def_id: &str, x: i32, y: i32) -> wire::Command {
@@ -455,6 +599,7 @@ mod tests {
             roof_color: "#234567".to_owned(),
             window_style: WindowStyle::Grid,
             seed: 7,
+            parts: Vec::new(),
         }
     }
 
@@ -469,13 +614,19 @@ mod tests {
                 assert_eq!(building.id, "1");
                 assert_eq!(building.def_id, "1");
                 assert_eq!(building.cell, WireCell { x: 10, y: 12 });
-                assert_eq!(building.derived.capacity, 2, "Cedar Walk-up: floor(18*0.15)");
+                assert_eq!(
+                    building.derived.capacity, 2,
+                    "Cedar Walk-up: floor(18*0.15)"
+                );
                 assert_eq!(building.derived.cost_credits, 2160);
             }
             other => panic!("expected building_placed, got {other:?}"),
         }
         match harness.next_result().await {
-            wire::CommandResult::Accepted { command_id, building_id } => {
+            wire::CommandResult::Accepted {
+                command_id,
+                building_id,
+            } => {
                 assert_eq!(command_id, "c1");
                 assert_eq!(building_id, "1");
             }
@@ -498,7 +649,11 @@ mod tests {
         harness.send_command(place("c1", "1", 10, 12)).await;
         let replay = harness.next_result().await;
         assert_eq!(replay, first);
-        assert_eq!(harness.snapshot().await.buildings.len(), 1, "replay must not re-apply");
+        assert_eq!(
+            harness.snapshot().await.buildings.len(),
+            1,
+            "replay must not re-apply"
+        );
     }
 
     #[tokio::test]
@@ -510,7 +665,12 @@ mod tests {
         // Same id, different cell → conflict, state untouched.
         harness.send_command(place("c1", "1", 40, 40)).await;
         match harness.next_result().await {
-            wire::CommandResult::Rejected { command_id, code, message, .. } => {
+            wire::CommandResult::Rejected {
+                command_id,
+                code,
+                message,
+                ..
+            } => {
                 assert_eq!(command_id, "c1");
                 assert_eq!(code, wire::RejectCode::DuplicateIdentityConflict);
                 assert!(message.contains("different payload"), "message: {message}");
@@ -558,7 +718,11 @@ mod tests {
         // new event).
         harness.send_command(place("c2", "1", 11, 12)).await;
         match harness.next_result().await {
-            wire::CommandResult::Rejected { command_id, conflicting_building_id, .. } => {
+            wire::CommandResult::Rejected {
+                command_id,
+                conflicting_building_id,
+                ..
+            } => {
                 assert_eq!(command_id, "c2");
                 assert_eq!(conflicting_building_id.as_deref(), Some("1"));
             }
@@ -579,7 +743,13 @@ mod tests {
             senders.push(tokio::spawn(async move {
                 let command = place(&format!("c{index}"), "1", 10 + (index as i32) * 4, 10);
                 let canonical = adapter::canonical_command(&command);
-                tx.send(WorldRequest::Command { conn, command, canonical }).await.unwrap();
+                tx.send(WorldRequest::Command {
+                    conn,
+                    command,
+                    canonical,
+                })
+                .await
+                .unwrap();
             }));
         }
         for handle in senders {
@@ -611,7 +781,10 @@ mod tests {
             other => panic!("expected building_demolished, got {other:?}"),
         }
         match harness.next_result().await {
-            wire::CommandResult::Accepted { command_id, building_id } => {
+            wire::CommandResult::Accepted {
+                command_id,
+                building_id,
+            } => {
                 assert_eq!(command_id, "d1");
                 assert_eq!(building_id, "1");
             }
@@ -633,9 +806,15 @@ mod tests {
     async fn out_of_bounds_and_bad_wire_values_reject() {
         let (mut harness, _dir) = test_world().await;
 
-        harness.send_command(place("c1", "1", GRID_WIDTH + 50, 0)).await;
+        harness
+            .send_command(place("c1", "1", GRID_WIDTH + 50, 0))
+            .await;
         match harness.next_result().await {
-            wire::CommandResult::Rejected { code, conflicting_building_id, .. } => {
+            wire::CommandResult::Rejected {
+                code,
+                conflicting_building_id,
+                ..
+            } => {
                 assert_eq!(code, wire::RejectCode::OutOfBounds);
                 assert_eq!(conflicting_building_id, None);
             }
@@ -643,14 +822,18 @@ mod tests {
         }
 
         // Non-decimal def_id → bad_request, no event, receipted for replay.
-        harness.send_command(place("c2", "not-a-number", 0, 0)).await;
+        harness
+            .send_command(place("c2", "not-a-number", 0, 0))
+            .await;
         match harness.next_result().await {
             wire::CommandResult::Rejected { code, .. } => {
                 assert_eq!(code, wire::RejectCode::BadRequest);
             }
             other => panic!("expected rejection, got {other:?}"),
         }
-        harness.send_command(place("c2", "not-a-number", 0, 0)).await;
+        harness
+            .send_command(place("c2", "not-a-number", 0, 0))
+            .await;
         match harness.next_result().await {
             wire::CommandResult::Rejected { code, .. } => {
                 assert_eq!(code, wire::RejectCode::BadRequest, "replayed");
@@ -670,21 +853,24 @@ mod tests {
         let before = harness.snapshot().await;
 
         let cases: Vec<wire::Command> = vec![
-            wire::Command::PlaceBuilding { // non-decimal def_id
+            wire::Command::PlaceBuilding {
+                // non-decimal def_id
                 command_id: "c1".to_owned(),
                 def_id: "abc".to_owned(),
                 revision: 1,
                 cell: WireCell { x: 0, y: 0 },
                 rotation: 0,
             },
-            wire::Command::PlaceBuilding { // stale/unknown definition revision
+            wire::Command::PlaceBuilding {
+                // stale/unknown definition revision
                 command_id: "c2".to_owned(),
                 def_id: "1".to_owned(),
                 revision: 2,
                 cell: WireCell { x: 0, y: 0 },
                 rotation: 0,
             },
-            wire::Command::PlaceBuilding { // rotation out of range
+            wire::Command::PlaceBuilding {
+                // rotation out of range
                 command_id: "c3".to_owned(),
                 def_id: "1".to_owned(),
                 revision: 1,
@@ -718,7 +904,10 @@ mod tests {
         let (tx, rx) = oneshot::channel();
         harness
             .world_tx
-            .send(WorldRequest::PublishAsset { recipe: invalid, reply: tx })
+            .send(WorldRequest::PublishAsset {
+                recipe: invalid,
+                reply: tx,
+            })
             .await
             .unwrap();
         let errors = rx.await.unwrap().unwrap_err();
@@ -730,7 +919,10 @@ mod tests {
         let (tx, rx) = oneshot::channel();
         harness
             .world_tx
-            .send(WorldRequest::PublishAsset { recipe: good.clone(), reply: tx })
+            .send(WorldRequest::PublishAsset {
+                recipe: good.clone(),
+                reply: tx,
+            })
             .await
             .unwrap();
         let definition = rx.await.unwrap().expect("published");
@@ -783,7 +975,10 @@ mod tests {
         harness2.send_command(place("c9", "1", 0, 0)).await;
         match harness2.next_result().await {
             wire::CommandResult::Accepted { building_id, .. } => {
-                assert_eq!(building_id, "3", "ids never rewind: next is 3 after building 2 was demolished")
+                assert_eq!(
+                    building_id, "3",
+                    "ids never rewind: next is 3 after building 2 was demolished"
+                )
             }
             other => panic!("expected accepted, got {other:?}"),
         }
@@ -807,7 +1002,10 @@ mod tests {
         // Derived values come from the normative derivation table.
         assert_eq!(dto.definitions[0].derived.capacity, 2);
         assert_eq!(dto.definitions[0].derived.cost_credits, 2160);
-        assert_eq!(dto.definitions[2].derived.capacity, 38, "tower: floor(96*0.40)");
+        assert_eq!(
+            dto.definitions[2].derived.capacity, 38,
+            "tower: floor(96*0.40)"
+        );
         assert_eq!(dto.definitions[2].derived.cost_credits, 32640);
     }
 }

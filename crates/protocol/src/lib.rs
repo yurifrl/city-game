@@ -38,6 +38,25 @@ pub enum WindowStyle {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../../apps/web/src/protocol/generated/")]
 #[serde(rename_all = "snake_case")]
+pub struct AssetPart {
+    /// Open vocabulary from the Asset Studio ("box", "roof_gable", "cylinder",
+    /// …). Renderers map unknown kinds to "box"; validation checks geometry
+    /// and color, not the kind string.
+    pub kind: String,
+    /// Metres relative to the footprint's min corner, y up from the ground.
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+    pub w: f32,
+    pub h: f32,
+    pub d: f32,
+    /// `#rrggbb`.
+    pub color: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../apps/web/src/protocol/generated/")]
+#[serde(rename_all = "snake_case")]
 pub struct Recipe {
     pub name: String,
     pub archetype: Archetype,
@@ -48,6 +67,10 @@ pub struct Recipe {
     pub roof_color: String,
     pub window_style: WindowStyle,
     pub seed: u32,
+    /// Authored geometry from the Asset Studio. Empty = the procedural
+    /// single-mass recipe the client compiler derives from the fields above.
+    #[serde(default)]
+    pub parts: Vec<AssetPart>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -129,6 +152,7 @@ pub enum Event {
     BuildingPlaced { building: BuildingDto },
     BuildingDemolished { building_id: WireId },
     DefinitionPublished { definition: AssetDefinition },
+    DefinitionRemoved { def_id: WireId },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -164,14 +188,7 @@ pub enum RejectCode {
 #[ts(export, export_to = "../../../apps/web/src/protocol/generated/")]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ServerMessage {
-    Hello {
-        actor: String,
-        world: WorldDto,
-    },
-    Event {
-        event: Event,
-    },
-    CommandResult {
-        result: CommandResult,
-    },
+    Hello { actor: String, world: WorldDto },
+    Event { event: Event },
+    CommandResult { result: CommandResult },
 }

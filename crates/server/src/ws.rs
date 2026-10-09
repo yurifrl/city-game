@@ -11,21 +11,35 @@ use city_protocol::ServerMessage;
 use tokio::sync::mpsc;
 
 use crate::adapter;
-use crate::hub::{HubMsg, OUTBOX_CAPACITY};
 use crate::http::App;
+use crate::hub::{HubMsg, OUTBOX_CAPACITY};
 use crate::runner::WorldRequest;
 
 /// Serves one upgraded socket until it closes, the hub drops it (slow
 /// consumer), or the runner goes away.
 pub(crate) async fn run_connection(app: App, mut socket: WebSocket) {
-    let conn = app.next_conn.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let conn = app
+        .next_conn
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let (out_tx, mut out_rx) = mpsc::channel::<ServerMessage>(OUTBOX_CAPACITY);
-    if app.hub.send(HubMsg::Register { conn, out: out_tx.clone() }).await.is_err() {
-    }
+    if app
+        .hub
+        .send(HubMsg::Register {
+            conn,
+            out: out_tx.clone(),
+        })
+        .await
+        .is_err()
+    {}
 
     // hello: actor + full world DTO from the single source of truth.
     let (tx, rx) = tokio::sync::oneshot::channel();
-    if app.world_tx.send(WorldRequest::Snapshot { reply: tx }).await.is_err() {
+    if app
+        .world_tx
+        .send(WorldRequest::Snapshot { reply: tx })
+        .await
+        .is_err()
+    {
         return;
     }
     match rx.await {
@@ -85,7 +99,11 @@ async fn handle_text(app: &App, out_tx: mpsc::Sender<ServerMessage>, conn: u64, 
             let canonical = adapter::canonical_command(&command);
             let _ = app
                 .world_tx
-                .send(WorldRequest::Command { conn, command, canonical })
+                .send(WorldRequest::Command {
+                    conn,
+                    command,
+                    canonical,
+                })
                 .await;
         }
         Err(bad_request) => {

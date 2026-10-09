@@ -16,7 +16,14 @@ import { CityClient } from "./connection/client";
 import type { ConnectionStatus } from "./connection/client";
 import { mountInspector } from "./inspectors/building";
 import { compilePrototype } from "./assets/compiler";
-import { clearArmed, mountCatalogue, mountDesigner, upsertCatalogueEntry } from "./editors/designer";
+import {
+  mountCatalogue,
+  mountDesigner,
+  openDetail,
+  removeCatalogueEntry,
+  setArmed,
+  upsertCatalogueEntry,
+} from "./editors/designer";
 import type { DesignerDeps } from "./editors/designer";
 import type {
   AssetDefinitionTS,
@@ -72,7 +79,14 @@ async function boot(): Promise<void> {
   const gridView = createGrid(scene, { width: 96, height: 96 });
   const views = new BuildingViews();
   const ghost = new Ghost(scene);
-  createCamera(scene, canvas, new Vector3(48, 0, 48));
+  const cameraRig = createCamera(scene, canvas, new Vector3(48, 0, 48));
+
+  // Browser-console debug handle for E2E tests and diagnostics, not a game surface.
+  (window as unknown as Record<string, unknown>).__city = {
+    replica,
+    scene,
+    camera: cameraRig.camera,
+  };
 
   const keyOf = (building: BuildingTS): string => `${building.def_id}@${building.revision}`;
   const keyOfDef = (def: AssetDefinitionTS): string => `${def.id}@${def.revision}`;
@@ -140,7 +154,8 @@ async function boot(): Promise<void> {
       }
       inspector.show({ building, definition: replica.definition(building.def_id) ?? null });
     },
-    onDisarm: clearArmed,
+    onArm: (def) => setArmed(def.id),
+    onDisarm: () => setArmed(null),
   });
 
   async function demolish(buildingId: string): Promise<void> {
@@ -178,17 +193,36 @@ async function boot(): Promise<void> {
     }
   }
 
+  const removeDefinition = async (
+    id: string,
+  ): Promise<{ ok: boolean; errors?: string[] }> => {
+    try {
+      const response = await fetch(`/api/assets/${id}`, { method: "DELETE" });
+      if (response.ok) return { ok: true };
+      const body = (await response.json().catch(() => null)) as { errors?: string[] } | null;
+      return { ok: false, errors: body?.errors ?? [`remove failed with HTTP ${response.status}`] };
+    } catch (err) {
+      return { ok: false, errors: [err instanceof Error ? err.message : String(err)] };
+    }
+  };
+
   const designerDeps: DesignerDeps = {
     publishRecipe: (recipe) => publishRecipe(recipe),
-    armPlacement: (def) => placement.arm(def),
+    removeDefinition,
     refreshCatalogue: (def) => upsertCatalogueEntry(def),
   };
 
   // Editors are a parallel milestone task (m1-04); until its implementations
   // land, the stubs throw — surface that explicitly instead of dying at boot.
   try {
-    mountCatalogue(requiredElement("catalogue"), replica.definitions(), (def) =>
-      placement.arm(def),
+    mountCatalogue(
+      requiredElement("catalogue"),
+      replica.definitions(),
+      (def) => {
+        placement.arm(def);
+        showToast(`placing ${def.recipe.name} — click the grid · R rotate · Esc cancel`, "info");
+      },
+      (def) => openDetail(def),
     );
     mountDesigner(requiredElement("designer"), designerDeps);
   } catch (err) {
@@ -215,6 +249,11 @@ async function boot(): Promise<void> {
     onEvent: (event) => {
       const diff = replica.applyEvent(event);
       if (event.type === "definition_published" && diff.published) onDefinition(diff.published);
+      if (event.type === "definition_removed" && diff.removedDef) {
+        removeCatalogueEntry(diff.removedDef);
+        setArmed(null);
+        showToast(`asset ${diff.removedDef} removed`, "info");
+      }
       if (diff.placed) refreshInstances(keyOf(diff.placed));
       if (diff.removed) refreshInstances(keyOf(diff.removed));
     },

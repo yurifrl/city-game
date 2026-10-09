@@ -57,10 +57,14 @@ Recipe JSON (`city_protocol::Recipe`), fields fixed:
 
 ```json
 {"name":"Cedar Walk-up","archetype":"house","footprint_w":3,"footprint_h":2,"floors":3,
- "base_color":"#b5654f","roof_color":"#3a3a3a","window_style":"grid","seed":11}
+ "base_color":"#b5654f","roof_color":"#3a3a3a","window_style":"grid","seed":11,
+ "parts":[]}
 ```
 
+
 `archetype ∈ house|shop|office|tower`, `window_style ∈ grid|stripes`. Validation: name 1..=64 chars; footprint 1..=8; floors 1..=40; colors match `^#[0-9a-fA-F]{6}$`.
+
+`parts` (Asset Studio bridge): optional array, empty = procedural single-mass recipe. Each part: `{kind:string≤24, x,y,z,w,h,d:number (metres, relative to footprint min corner, y up), color:#rrggbb}`. Part validation: ≤64 parts; positive dims ≤24 m; x/z extent inside the footprint; y+h ≤ floors·3 + 2 m; hex color. Stats still derive from the recipe fields only.
 
 ## Asset derivation (server-authoritative, m1-01 implements, m1-02 uses)
 
@@ -86,6 +90,7 @@ Run from repo root: binds `127.0.0.1:8080`, persists to `./data/city.db`, serves
 - `GET /` — static files + SPA fallback
 - `GET /api/assets` → `{"definitions":[...]}` (Definition JSON as above)
 - `POST /api/assets` body = Recipe JSON → `200` full AssetDefinition, or `400` `{"errors":["..."]}`; also persists, assigns id, and broadcasts `definition_published`
+- `DELETE /api/assets/{id}` → `200 {"removed":true}` (persists removal, broadcasts `definition_removed`), `400` non-numeric id, `409 {"errors":["..."]}` when the id is unknown or placed buildings still reference the definition
 - `GET /ws` — WebSocket upgrade
 
 Command lifecycle: bounded ingress queue → single world owner thread assigns order (never client timestamps) → receipt lookup (same `command_id` + identical canonical payload ⇒ replay stored result; same id different payload ⇒ `duplicate_identity_conflict`) → validate+apply → single SQLite transaction (mutation + meta + receipt) → only then broadcast events and reply `command_result`. Bad JSON/unknown shape ⇒ `bad_request` result to that socket, socket stays open. Malformed commands are never broadcast as events.

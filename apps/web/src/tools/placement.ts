@@ -25,6 +25,7 @@ export interface PlacementDeps {
   send(command: CommandTS): Promise<CommandResultTS>;
   nextCommandId(): string;
   onSelectBuilding(id: string | null): void;
+  onArm(def: AssetDefinitionTS): void;
   onDisarm(): void;
 }
 
@@ -49,6 +50,7 @@ export class PlacementTool {
     this.rotation = 0;
     this.pending = false;
     this.deps.onSelectBuilding(null);
+    this.deps.onArm(def);
     this.refreshHover();
   }
 

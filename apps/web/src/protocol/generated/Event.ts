@@ -2,4 +2,4 @@
 import type { AssetDefinition } from "./AssetDefinition";
 import type { BuildingDto } from "./BuildingDto";
 
-export type Event = { "type": "building_placed", building: BuildingDto, } | { "type": "building_demolished", building_id: string, } | { "type": "definition_published", definition: AssetDefinition, };
+export type Event = { "type": "building_placed", building: BuildingDto, } | { "type": "building_demolished", building_id: string, } | { "type": "definition_published", definition: AssetDefinition, } | { "type": "definition_removed", def_id: string, };

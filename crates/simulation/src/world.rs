@@ -116,7 +116,10 @@ impl WorldState {
         );
         for &cell in &footprint_cells {
             let slot = Self::slot(cell).unwrap_or_else(|| {
-                panic!("footprint cell {cell:?} of building {:?} is outside the grid", building.id)
+                panic!(
+                    "footprint cell {cell:?} of building {:?} is outside the grid",
+                    building.id
+                )
             });
             assert!(
                 self.occupancy[slot].is_none(),
@@ -219,10 +222,16 @@ mod tests {
             cells,
         );
 
-        assert_eq!(world.building(BuildingId(1)).map(|b| b.origin), Some(origin));
+        assert_eq!(
+            world.building(BuildingId(1)).map(|b| b.origin),
+            Some(origin)
+        );
         assert_eq!(world.buildings().count(), 1);
         assert_eq!(world.occupant_at(origin), Some(BuildingId(1)));
-        assert_eq!(world.occupant_at(Cell { x: 12, y: 13 }), Some(BuildingId(1)));
+        assert_eq!(
+            world.occupant_at(Cell { x: 12, y: 13 }),
+            Some(BuildingId(1))
+        );
         // Just outside the 3-wide footprint at x = 10..=12.
         assert_eq!(world.occupant_at(Cell { x: 13, y: 12 }), None);
 
@@ -240,8 +249,20 @@ mod tests {
     fn occupant_outside_the_grid_is_never_some() {
         let world = WorldState::new();
         assert_eq!(world.occupant_at(Cell { x: -1, y: 0 }), None);
-        assert_eq!(world.occupant_at(Cell { x: 0, y: GRID_HEIGHT }), None);
-        assert_eq!(world.occupant_at(Cell { x: GRID_WIDTH, y: 0 }), None);
+        assert_eq!(
+            world.occupant_at(Cell {
+                x: 0,
+                y: GRID_HEIGHT
+            }),
+            None
+        );
+        assert_eq!(
+            world.occupant_at(Cell {
+                x: GRID_WIDTH,
+                y: 0
+            }),
+            None
+        );
     }
 
     #[test]

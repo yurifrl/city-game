@@ -178,6 +178,16 @@ Scale independent worlds across processes/hosts before distributing one city. La
 
 First compiler: bounded declarative mass/facade operations, not a new scripting language. Editable geometry can be richer than collision/buildability data. Server approval derives/verifies gameplay numbers from allowed archetypes and dimensions; a client cannot publish free buildings with arbitrary capacity.
 
+The Asset Studio (`../building-studio`, separate process on `:8200`) is the
+authoring front end for these recipes. Its MCP server exposes part-level
+authoring tools; `city_publish` converts a studio scene into a `Recipe` with
+an optional `parts` array (metre-space boxes/prisms relative to the footprint
+min corner) and submits it through the same `POST /api/assets` path as the
+web designer. Empty `parts` means the compiler derives the procedural
+single-mass prototype; non-empty parts compile to a merged multi-part mesh
+with one material per color. Definitions are removed only while no placed
+building references them (`DELETE /api/assets/{id}` → `definition_removed`).
+
 Content key includes recipe revision, compiler version, palette/material versions, and seed. Publish immutable definitions; placed instances pin a revision. Keep referenced old content available. Existing buildings change only through an explicit upgrade/migration that validates occupants, dimensions, entrances and costs.
 
 ### Building compilation

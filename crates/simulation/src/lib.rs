@@ -10,7 +10,9 @@ pub mod save;
 pub mod world;
 
 pub use assets::{ApprovedDefinition, AssetCatalogue};
-pub use construction::{apply_demolition, apply_placement, footprint, validate_placement, Placement};
+pub use construction::{
+    apply_demolition, apply_placement, footprint, validate_placement, Placement,
+};
 pub use error::Reject;
 pub use id::{AssetId, BuildingId};
 pub use save::{from_save, to_save, SaveAsset, SaveBuilding, WorldSave};

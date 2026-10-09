@@ -1,0 +1,43 @@
+version: "3"
+
+vars:
+  PORT: "8080"
+
+tasks:
+  install:
+    desc: Install web dependencies
+    cmds:
+      - npm install --prefix apps/web
+
+  server:
+    desc: Build and run the authoritative server (127.0.0.1:{{.PORT}})
+    deps: [dist]
+    cmds:
+      - cargo run -p city-server
+
+  web:
+    desc: Run the Vite dev server (proxies /api and /ws to the server)
+    cmds:
+      - npm run dev --prefix apps/web
+
+  dist:
+    desc: Build the web client into apps/web/dist
+    cmds:
+      - npm run build --prefix apps/web
+
+  run:
+    desc: Start everything (web client build + server + Vite dev server)
+    deps: [server, web]
+    silent: true
+
+  test:
+    desc: Run workspace tests and type-check the web client
+    cmds:
+      - cargo test --workspace
+      - npm run build --prefix apps/web
+
+  clean:
+    desc: Remove build output
+    cmds:
+      - cargo clean
+      - rm -rf apps/web/dist

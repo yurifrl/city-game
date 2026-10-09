@@ -19,6 +19,7 @@ export interface ReplicaDiff {
   placed?: BuildingTS;
   removed?: BuildingTS;
   published?: AssetDefinitionTS;
+  removedDef?: string;
 }
 
 /** Effective footprint dims: odd quarter turns swap width/height. */
@@ -91,6 +92,9 @@ export class WorldReplica {
       case "definition_published":
         this.defs.set(event.definition.id, event.definition);
         return { published: event.definition };
+      case "definition_removed":
+        this.defs.delete(event.def_id);
+        return { removedDef: event.def_id };
     }
   }
 

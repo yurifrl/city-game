@@ -61,6 +61,56 @@ html, body {
 .def-card:hover, .def-card.armed { border-color: #d8a24a; }
 .def-card .name { font-weight: 600; font-size: 13px; }
 .def-card .meta { font-size: 11px; color: #9aa3b5; }
+.def-card { position: relative; }
+.def-card .card-edit {
+  display: none;
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  font: 600 12px/1 system-ui, sans-serif;
+  color: #cfd6e4;
+  background: rgba(20, 22, 28, 0.9);
+  border: 1px solid #2c3140;
+  border-radius: 4px;
+  padding: 3px 6px;
+  cursor: pointer;
+}
+.def-card:hover .card-edit { display: block; }
+.def-card .card-edit:hover { color: #f0e3c0; border-color: #d8a24a; }
+
+.catalogue-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.def-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.def-card { padding: 6px; margin-bottom: 0; }
+.def-icon {
+  width: 100%;
+  height: 84px;
+  background: #171b24;
+  border-radius: 4px;
+  margin-bottom: 4px;
+}
+.ghost-button {
+  margin-top: 0;
+  width: auto;
+  background: #232838;
+  color: #e8e6e1;
+  border: 1px solid #343b52;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.ghost-button:hover { border-color: #d8a24a; }
+.detail-actions { display: flex; gap: 6px; }
+.detail-actions button { width: auto; flex: 1; }
+.ghost-button.danger { background: #4a2e35; border-color: #6d3b45; color: #f0c9c9; }
+.parts-note { font-size: 11px; color: #7f8aa0; margin-top: 6px; }
 
 #designer label { display: block; font-size: 11px; color: #9aa3b5; margin: 6px 0 2px; }
 #designer input, #designer select {
