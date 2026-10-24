@@ -10,10 +10,13 @@ image:
   pullPolicy: Always
 
 # Public hostnames for the Istio VirtualService. external-dns (istio-
-# virtualservice source, domain filter syscd.live, proxied) turns these into
-# Cloudflare records automatically.
+# virtualservice source, domain filter syscd.live, proxied) turns the .live
+# name into a proxied Cloudflare record. The gateway's tailscale annotation
+# publishes syscd.tech hostnames to MagicDNS (*.syscd.tech -> 192.168.68.201),
+# giving a tailnet route that is NOT behind Cloudflare Access.
 hosts:
   - city-game.syscd.live
+  - city-game.syscd.tech
 
 # SQLite world state (./data/city.db via /app/data -> /data).
 storage:
