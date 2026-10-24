@@ -20,6 +20,14 @@ spec:
         app: city-game
         istio.io/dataplane-mode: ambient
     spec:
+      # CI builds linux/amd64 only; the cluster also runs an arm64 node (rpi01).
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      # The server runs as uid 65532 and creates ./data/city.db at startup;
+      # fsGroup gives it group-write on the Longhorn volume's root dir.
+      securityContext:
+        fsGroup: 65532
+        fsGroupChangePolicy: OnRootMismatch
       containers:
         - name: server
           image: {{ printf "%s:%s" .Values.image.repository .Values.image.tag | quote }}
