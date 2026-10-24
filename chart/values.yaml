@@ -1,0 +1,29 @@
+# ── city-game chart values ─────────────────────────────────────────────────
+# The browser is the API client: the server image serves the static web
+# build plus same-origin /api + /ws on one port, so there is exactly one
+# deployment and one service.
+
+image:
+  repository: ghcr.io/yurifrl/city-game
+  tag: latest
+  # :latest moves on every main-branch push; Always keeps pod restarts honest.
+  pullPolicy: Always
+
+# Public hostnames for the Istio VirtualService. external-dns (istio-
+# virtualservice source, domain filter syscd.live, proxied) turns these into
+# Cloudflare records automatically.
+hosts:
+  - city-game.syscd.live
+
+# SQLite world state (./data/city.db via /app/data -> /data).
+storage:
+  className: longhorn-ha
+  size: 1Gi
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi

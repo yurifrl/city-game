@@ -1,0 +1,6 @@
+apiVersion: v2
+name: city-game
+description: Cooperative city simulation — one Rust server serving the static web build, HTTP API, and WebSocket replication on a single port.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

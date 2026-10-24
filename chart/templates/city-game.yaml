@@ -1,0 +1,98 @@
+{{/*
+One deployment + one service + one VirtualService. The server image serves
+static, API, and WS on :8080; the browser connects same-origin, so no
+second front-end component exists.
+*/}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: city-game
+  labels:
+    app: city-game
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: city-game
+  template:
+    metadata:
+      labels:
+        app: city-game
+        istio.io/dataplane-mode: ambient
+    spec:
+      containers:
+        - name: server
+          image: {{ printf "%s:%s" .Values.image.repository .Values.image.tag | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          # No /healthz route exists in the server; "/" serves the SPA, so it
+          # doubles as a probe target.
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: city-game
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: city-game
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: {{ .Values.storage.className }}
+  resources:
+    requests:
+      storage: {{ .Values.storage.size }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: city-game
+  labels:
+    app: city-game
+spec:
+  selector:
+    app: city-game
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: city-game
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  hosts:
+    {{- toYaml .Values.hosts | nindent 4 }}
+  gateways:
+    - istio-system/dev
+    - istio-system/cloudflare
+    - istio-system/tailscale
+  http:
+    - route:
+        - destination:
+            host: city-game.{{ .Release.Namespace }}.svc.cluster.local
+            port:
+              number: 80

@@ -1,0 +1,15 @@
+---
+import DocLayout from '../layouts/DocLayout.astro';
+import { doc } from '../docs';
+import { render } from 'astro:content';
+
+const entry = await doc('architecture');
+const { Content } = await render(entry);
+---
+
+<DocLayout
+  title="Genesis — Architecture"
+  description="Chosen starting architecture for Genesis: an authoritative Rust simulation, a Tokio/Axum server, a TypeScript browser client, and the contracts between them."
+>
+  <Content />
+</DocLayout>

@@ -1,0 +1,14 @@
+# Build context hygiene: nothing the build stages consume may come from the
+# host working tree (web deps/dist and cargo artifacts are built in-image).
+.git
+.github
+node_modules/
+apps/web/node_modules/
+apps/web/dist/
+target/
+data/
+.tasks/
+.worktrees/
+shots*
+Dockerfile
+.dockerignore

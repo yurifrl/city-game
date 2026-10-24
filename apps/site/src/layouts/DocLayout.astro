@@ -1,0 +1,161 @@
+---
+interface Props {
+  title: string;
+  description: string;
+}
+
+const { title, description } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="theme-color" content="#10141b" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <style is:global>
+      :root {
+        --bg: #10141b;
+        --surface: #161c26;
+        --text: #e8e4da;
+        --muted: #99a3ae;
+        --border: #29313d;
+        --accent: #d9a441;
+        --accent-soft: rgba(217, 164, 65, 0.12);
+      }
+      * { box-sizing: border-box; }
+      html { color-scheme: dark; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 16px/1.7 system-ui, -apple-system, 'Segoe UI', sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      a { color: var(--accent); text-decoration: none; }
+      a:hover { text-decoration: underline; text-underline-offset: 3px; }
+      ::selection { background: var(--accent-soft); }
+
+      header { border-bottom: 1px solid var(--border); padding: 1.5rem 1.5rem 1.25rem; }
+      .wordmark {
+        margin: 0;
+        font-family: Georgia, 'Times New Roman', serif;
+        font-size: 1.375rem;
+        letter-spacing: 0.28em;
+        text-transform: uppercase;
+        color: var(--accent);
+      }
+      .tagline { margin: 0.25rem 0 0; color: var(--muted); font-style: italic; font-family: Georgia, serif; }
+      nav { margin-top: 1rem; display: flex; gap: 1.5rem; }
+      nav a { color: var(--muted); font-size: 0.9375rem; }
+      nav a:hover { color: var(--text); }
+
+      main { min-height: 60vh; }
+      article { max-width: 46rem; margin: 0 auto; padding: 2.75rem 1.5rem 4rem; }
+
+      article h1 {
+        font-family: Georgia, serif;
+        font-weight: 400;
+        font-size: 2.125rem;
+        line-height: 1.25;
+        margin: 0 0 1.75rem;
+      }
+      article h2 {
+        font-family: Georgia, serif;
+        font-weight: 400;
+        font-size: 1.5rem;
+        margin: 3rem 0 1rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid var(--border);
+      }
+      article h3 { font-weight: 600; font-size: 1.0625rem; margin: 2rem 0 0.75rem; }
+      article p { margin: 0 0 1.1rem; }
+      article li { margin-bottom: 0.4rem; }
+      article strong { color: #ffffff; }
+
+      article blockquote {
+        margin: 1.5rem 0;
+        padding: 0.75rem 1.25rem;
+        border-left: 3px solid var(--accent);
+        background: var(--accent-soft);
+        color: var(--muted);
+      }
+      article blockquote p:last-child { margin-bottom: 0; }
+
+      article code {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 0.1em 0.35em;
+        font-size: 0.875em;
+      }
+      article pre {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 1rem 1.25rem;
+        overflow-x: auto;
+      }
+      article pre code { background: none; border: none; padding: 0; }
+
+      article table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.9rem;
+        display: block;
+        overflow-x: auto;
+        margin: 1.5rem 0;
+      }
+      article th, article td {
+        border-bottom: 1px solid var(--border);
+        padding: 0.55rem 0.8rem;
+        text-align: left;
+        vertical-align: top;
+      }
+      article th {
+        color: var(--muted);
+        font-weight: 600;
+        font-size: 0.8125rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      article hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+
+      footer {
+        border-top: 1px solid var(--border);
+        padding: 1.5rem;
+        text-align: center;
+        color: var(--muted);
+        font-size: 0.875rem;
+      }
+      footer p { margin: 0; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <p class="wordmark">Genesis</p>
+      <p class="tagline">a city worth understanding, built together</p>
+      <nav>
+        <a href="/">Design</a>
+        <a href="/architecture">Architecture</a>
+        <a href="/research">Research</a>
+      </nav>
+    </header>
+    <main>
+      <article>
+        <slot />
+      </article>
+    </main>
+    <footer>
+      <p>Rendered from the repository's own documents — the repo is the source of truth.</p>
+    </footer>
+  </body>
+</html>

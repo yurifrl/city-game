@@ -5,9 +5,10 @@ vars:
 
 tasks:
   install:
-    desc: Install web dependencies
+    desc: Install web and site dependencies
     cmds:
-      - npm install --prefix apps/web
+      - bun install --cwd apps/web
+      - bun install --cwd apps/site
 
   server:
     desc: Build and run the authoritative server (127.0.0.1:{{.PORT}})
@@ -18,12 +19,17 @@ tasks:
   web:
     desc: Run the Vite dev server (proxies /api and /ws to the server)
     cmds:
-      - npm run dev --prefix apps/web
+      - bun run --cwd apps/web dev
 
   dist:
     desc: Build the web client into apps/web/dist
     cmds:
-      - npm run build --prefix apps/web
+      - bun run --cwd apps/web build
+
+  run:docs:
+    desc: Run the docs site dev server (apps/site)
+    cmds:
+      - bun run --cwd apps/site dev
 
   run:
     desc: Start everything (web client build + server + Vite dev server)
@@ -34,10 +40,11 @@ tasks:
     desc: Run workspace tests and type-check the web client
     cmds:
       - cargo test --workspace
-      - npm run build --prefix apps/web
+      - bun run --cwd apps/web build
 
   clean:
     desc: Remove build output
     cmds:
       - cargo clean
       - rm -rf apps/web/dist
+      - rm -rf apps/site/dist
