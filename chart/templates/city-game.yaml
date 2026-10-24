@@ -20,9 +20,7 @@ spec:
         app: city-game
         istio.io/dataplane-mode: ambient
     spec:
-      # CI builds linux/amd64 only; the cluster also runs an arm64 node (rpi01).
-      nodeSelector:
-        kubernetes.io/arch: amd64
+      # CI publishes linux/amd64 + linux/arm64; any Ready cluster node fits.
       # The server runs as uid 65532 and creates ./data/city.db at startup;
       # fsGroup gives it group-write on the Longhorn volume's root dir.
       securityContext:
@@ -37,7 +35,9 @@ spec:
               containerPort: 8080
               protocol: TCP
           # No /healthz route exists in the server; "/" serves the SPA, so it
-          # doubles as a probe target.
+          # doubles as a probe target. readinessFailureThreshold x period 10s
+          # keeps a crashlooping pod out of the Service endpoints quickly,
+          # instead of the default 3 failures x 30s liveness cadence.
           livenessProbe:
             httpGet:
               path: /
@@ -50,6 +50,7 @@ spec:
               port: http
             initialDelaySeconds: 2
             periodSeconds: 10
+            failureThreshold: 2
           volumeMounts:
             - name: data
               mountPath: /data
