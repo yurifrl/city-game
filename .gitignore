@@ -5,9 +5,4 @@ dist/
 .tasks/
 .worktrees/
 *.log
-m1-01-simulation
-m1-02-server
-m1-03-web-core
-m1-04-designer
-poc/
-.astro/
+shots/

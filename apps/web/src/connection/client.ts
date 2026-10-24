@@ -1,13 +1,16 @@
 // WebSocket transport for the command path. Connects to /ws (dev proxy targets
-// the server), reconnects with 1s→10s exponential backoff reset on successful
-// open, tracks pending commands by command_id, and dispatches server messages
-// to the handlers wired by the composition root.
+// the server), identifies with a stable actor key on every open (first message
+// on a fresh connection, per docs/contracts/multiplayer-stream.md §1.1),
+// reconnects with 1s→10s exponential backoff reset on successful open, tracks
+// pending commands by command_id, and dispatches server messages to the
+// handlers wired by the composition root.
 
 import type {
   CommandResultTS,
   CommandTS,
   ClientMessageTS,
   EventTS,
+  InputMessageTS,
   ServerMessageTS,
   WorldTS,
 } from "../protocol/types";
@@ -15,13 +18,34 @@ import type {
 export type ConnectionStatus = "connecting" | "online" | "offline";
 
 export interface ClientHandlers {
-  onHello(world: WorldTS, actor: string): void;
+  /** Fired on the hello frame — the seat's resolved actor id. */
+  onIdentified(you: string): void;
+  /** Fired on the helloworld frame — the full world snapshot. */
+  onHello(world: WorldTS): void;
   onEvent(event: EventTS): void;
   onStatus(status: ConnectionStatus): void;
 }
 
 const BASE_BACKOFF_MS = 1000;
 const MAX_BACKOFF_MS = 10000;
+const KEY_STORAGE_ITEM = "city-key";
+
+/**
+ * Resolves the seat's actor key: the `?seed=` UUID when booted by the seat
+ * manager, otherwise a random UUID persisted in localStorage for direct dev
+ * use. Stable across reloads and reconnects so the server keeps identity and
+ * label.
+ */
+export function resolveIdentityKey(search: string = window.location.search): string {
+  const fromQuery = new URLSearchParams(search).get("seed");
+  if (fromQuery) return fromQuery;
+  let stored = window.localStorage.getItem(KEY_STORAGE_ITEM);
+  if (!stored) {
+    stored = crypto.randomUUID();
+    window.localStorage.setItem(KEY_STORAGE_ITEM, stored);
+  }
+  return stored;
+}
 
 interface PendingEntry {
   resolve(result: CommandResultTS): void;
@@ -40,11 +64,15 @@ export class CityClient {
   private backoffAttempt = 0;
   private closedByUser = false;
   private currentStatus: ConnectionStatus = "offline";
+  private readonly key: string;
 
   constructor(
     private readonly handlers: ClientHandlers,
     private readonly url: string = defaultUrl(),
-  ) {}
+    key: string = resolveIdentityKey(),
+  ) {
+    this.key = key;
+  }
 
   connect(): void {
     this.closedByUser = false;
@@ -62,9 +90,17 @@ export class CityClient {
     }
     return new Promise<CommandResultTS>((resolve, reject) => {
       this.pending.set(command.command_id, { resolve, reject });
-      const message: ClientMessageTS = { type: "command", command };
-      ws.send(JSON.stringify(message));
+      this.transmit({ type: "command", command });
     });
+  }
+
+  /**
+   * Sends a pointer-intent packet. Fire-and-forget: presence packets never
+   * produce receipts, so there is nothing to await or retry.
+   */
+  sendInput(input: InputMessageTS): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    this.transmit({ type: "input", input });
   }
 
   close(): void {
@@ -76,6 +112,10 @@ export class CityClient {
     this.failPending(new Error("client closed before the server replied"));
     this.ws?.close();
     this.ws = null;
+  }
+
+  private transmit(message: ClientMessageTS): void {
+    this.ws?.send(JSON.stringify(message));
   }
 
   private open(): void {
@@ -92,6 +132,9 @@ export class CityClient {
     ws.onopen = () => {
       this.backoffAttempt = 0;
       this.setStatus("online");
+      // identify must be the first message on every fresh connection; the
+      // same key is reused so the server restores actor identity and label.
+      this.transmit({ type: "identify", key: this.key });
     };
     ws.onmessage = (ev) => this.dispatch(ev.data);
     ws.onclose = () => {
@@ -124,7 +167,10 @@ export class CityClient {
     }
     switch (message.type) {
       case "hello":
-        this.handlers.onHello(message.world, message.actor);
+        this.handlers.onIdentified(message.you);
+        return;
+      case "helloworld":
+        this.handlers.onHello(message.world);
         return;
       case "event":
         this.handlers.onEvent(message.event);

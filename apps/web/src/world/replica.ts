@@ -95,6 +95,12 @@ export class WorldReplica {
       case "definition_removed":
         this.defs.delete(event.def_id);
         return { removedDef: event.def_id };
+      // Presence lifecycle events never touch world state; the presence
+      // board consumes them upstream in the composition root.
+      case "player_joined":
+      case "player_left":
+      case "presence":
+        return {};
     }
   }
 

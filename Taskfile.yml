@@ -5,10 +5,10 @@ vars:
 
 tasks:
   install:
-    desc: Install web and site dependencies
+    desc: Install web and stream-service dependencies
     cmds:
       - bun install --cwd apps/web
-      - bun install --cwd apps/site
+      - bun install --cwd apps/stream
 
   server:
     desc: Build and run the authoritative server (127.0.0.1:{{.PORT}})
@@ -26,14 +26,14 @@ tasks:
     cmds:
       - bun run --cwd apps/web build
 
-  run:docs:
-    desc: Run the docs site dev server (apps/site)
+  stream:
+    desc: Run the video bridge / seat manager on :8081 (needs the game server up)
     cmds:
-      - bun run --cwd apps/site dev
+      - bun run --cwd apps/stream start
 
   run:
-    desc: Start everything (web client build + server + Vite dev server)
-    deps: [server, web]
+    desc: Start everything (web client build + server + stream bridge)
+    deps: [server, stream]
     silent: true
 
   test:
@@ -41,10 +41,12 @@ tasks:
     cmds:
       - cargo test --workspace
       - bun run --cwd apps/web build
+      - bun run --cwd apps/stream typecheck
+      - bun test --cwd apps/stream
 
   clean:
     desc: Remove build output
     cmds:
       - cargo clean
       - rm -rf apps/web/dist
-      - rm -rf apps/site/dist
+      - rm -rf apps/stream/node_modules

@@ -13,7 +13,7 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
 use tower_http::services::{ServeDir, ServeFile};
 
-use crate::hub::HubHandle;
+use crate::hub::{ConnectionId, HubHandle};
 use crate::runner::WorldRequest;
 use crate::ws;
 
@@ -26,6 +26,29 @@ pub(crate) struct App {
     pub(crate) next_conn: Arc<AtomicU64>,
 }
 
+impl App {
+    /// Completes the identify handshake with the world owner: the runner
+    /// resolves the actor, announces the join, and answers with the world
+    /// snapshot exactly as of the join plus one `PresenceState` per actor
+    /// already present. `None` means the runner is gone (socket must die).
+    pub(crate) async fn identify(
+        &self,
+        conn: ConnectionId,
+        actor: city_simulation::ActorId,
+    ) -> Option<(city_protocol::WorldDto, Vec<city_protocol::PresenceState>)> {
+        let (tx, rx) = oneshot::channel();
+        self.world_tx
+            .send(WorldRequest::Identified {
+                conn,
+                actor,
+                reply: tx,
+            })
+            .await
+            .ok()?;
+        rx.await.ok().flatten()
+    }
+}
+
 #[derive(Serialize)]
 struct DefinitionsResponse {
     definitions: Vec<city_protocol::AssetDefinition>,
@@ -35,6 +58,7 @@ pub(crate) fn router(app: App, dist_dir: &str) -> Router {
     let index = std::path::Path::new(dist_dir).join("index.html");
     let static_service = ServeDir::new(dist_dir).fallback(ServeFile::new(index));
     Router::new()
+        .route("/api/seed", get(seed))
         .route("/api/assets", get(assets_get).post(assets_post))
         .route("/api/assets/{id}", delete(assets_delete))
         .route("/ws", get(ws_upgrade))
@@ -45,6 +69,43 @@ pub(crate) fn router(app: App, dist_dir: &str) -> Router {
 
 async fn api_not_found() -> Response {
     (StatusCode::NOT_FOUND, "not found").into_response()
+}
+
+/// `GET /api/seed` → `{"seed":"<uuid>"}`. The seat stores this value and
+/// sends it as `identify.key`; it IS the actor identity. Same seed ⇒ same
+/// player across reconnects. Fresh per call — the seat manager (M2 e2e)
+/// claims one per browser seat.
+async fn seed() -> Response {
+    (StatusCode::OK, Json(SeedResponse { seed: new_seed() })).into_response()
+}
+
+#[derive(Serialize)]
+struct SeedResponse {
+    seed: String,
+}
+
+/// A random UUID v4 string. No external uuid dependency: 16 random bytes
+/// from the OS entropy pool, version/variant bits set per RFC 4122.
+fn new_seed() -> String {
+    let mut bytes = [0u8; 16];
+    getrandom(&mut bytes).expect("OS entropy unavailable");
+    bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
+    bytes[8] = (bytes[8] & 0x3f) | 0x80; // RFC 4122 variant
+    let hex = |b: &[u8]| b.iter().map(|x| format!("{x:02x}")).collect::<String>();
+    format!(
+        "{}-{}-{}-{}-{}",
+        hex(&bytes[0..4]),
+        hex(&bytes[4..6]),
+        hex(&bytes[6..8]),
+        hex(&bytes[8..10]),
+        hex(&bytes[10..16]),
+    )
+}
+
+fn getrandom(buf: &mut [u8]) -> Result<(), String> {
+    use std::io::Read;
+    let mut file = std::fs::File::open("/dev/urandom").map_err(|err| err.to_string())?;
+    file.read_exact(buf).map_err(|err| err.to_string())
 }
 
 /// `GET /api/assets` → `{"definitions":[...]}` from the world owner, so the

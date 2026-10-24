@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>city-game — seat __SEAT_ID__</title>
+  <link rel="stylesheet" href="/static/viewer.css" />
+</head>
+<body>
+  <header class="bar">
+    <span class="title">city-game · seat <strong id="seat-id">__SEAT_ID__</strong></span>
+    <span id="role" class="badge">connecting…</span>
+    <span id="stats" class="muted"></span>
+  </header>
+  <main class="stage">
+    <canvas id="screen" width="__WIDTH__" height="__HEIGHT__" aria-label="streamed game view"></canvas>
+    <div id="overlay" class="overlay" hidden>connecting…</div>
+  </main>
+  <script type="module" src="/static/viewer.js"></script>
+</body>
+</html>

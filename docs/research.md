@@ -1,6 +1,6 @@
 # Research
 
-Status: research supporting the [genesis](../GENESIS.md), [architecture](architecture.md), and [delivery plan](../.agents/plans/2026-09-07_13-12-city-genesis.md). Facts were verified by opening primary documentation where noted; performance targets and capacity numbers remain **unmeasured proposals** until the workloads in [architecture §8](architecture.md#8-performance-acceptance-not-marketing-numbers) run. The repository contained no code when this research was gathered.
+Status: research supporting the [genesis](../GENESIS.md) and [architecture](architecture.md). Facts were verified by opening primary documentation where noted; performance targets and capacity numbers remain **unmeasured proposals** until the workloads in [architecture §8](architecture.md#8-performance-acceptance-not-marketing-numbers) run. The repository contained no code when this research was gathered.
 
 Method: primary sources preferred (official manuals, developer diaries, engine documentation, papers). Every source carries a version caveat. Secondary reporting is used only for clearly attributed developer statements. Recommendations are separated from verified facts.
 

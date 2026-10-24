@@ -15,9 +15,6 @@ use city_simulation::{
 /// column, so this constant is the single source of revision truth.
 pub(crate) const PUBLISHED_REVISION: u32 = 1;
 
-/// The only actor in M1: the single authenticated owner connection.
-pub(crate) const OWNER_ACTOR: &str = "owner";
-
 /// Rebuilds a full world snapshot for `hello` / `GET` consumers.
 /// Lists are sorted by id so snapshots are deterministic.
 pub(crate) fn world_dto(world: &WorldState, catalogue: &AssetCatalogue) -> wire::WorldDto {
@@ -69,12 +66,18 @@ pub(crate) fn building_dto(building: &Building, def: &ApprovedDefinition) -> wir
         },
         rotation: building.rotation,
         derived: def.derived,
+        owner: building.owner.clone().map(|actor| actor.0),
     }
 }
 
 /// Domain id → decimal wire id.
 pub(crate) fn wire_id(id: u64) -> wire::WireId {
     id.to_string()
+}
+
+/// Domain actor → wire actor (both are the seed UUID string).
+pub(crate) fn actor_id(actor: &city_simulation::ActorId) -> wire::ActorId {
+    actor.0.clone()
 }
 
 /// Decimal wire id → domain id. Only the canonical form is accepted:
@@ -130,6 +133,7 @@ pub(crate) fn command_id(command: &wire::Command) -> &str {
 /// (decimal id syntax, published revision, rotation range). Everything
 /// geometric goes through `simulation::construction::validate_placement`.
 pub(crate) fn parse_placement(
+    owner: Option<city_simulation::ActorId>,
     def_id: &str,
     revision: u32,
     cell: wire::Cell,
@@ -152,6 +156,7 @@ pub(crate) fn parse_placement(
             y: cell.y,
         },
         rotation,
+        owner,
     })
 }
 
@@ -204,7 +209,7 @@ fn bad_request_message(command_id: &str, err: &serde_json::Error) -> wire::Serve
         result: bad_request(
             command_id,
             format!(
-                "malformed message, expected {{\"type\":\"command\",\"command\":{{...}}}}: {err}"
+                "malformed message, expected {{\"type\":\"identify|command|input\",...}}: {err}"
             ),
         ),
     }
@@ -230,8 +235,49 @@ mod tests {
     fn parses_valid_command_message() {
         let text = r#"{"type":"command","command":{"type":"place_building","command_id":"c1","def_id":"1","revision":1,"cell":{"x":10,"y":12},"rotation":0}}"#;
         let message = parse_client_message(text).ok().expect("valid command");
-        let wire::ClientMessage::Command { command } = message;
+        let wire::ClientMessage::Command { command } = message else { panic!("expected command") };
         assert_eq!(command_id(&command), "c1");
+    }
+
+    #[test]
+    fn parses_identify_and_input_frames() {
+        let identify = parse_client_message(r#"{"type":"identify","key":"a1b2c3d4"}"#)
+            .ok()
+            .unwrap();
+        assert_eq!(
+            identify,
+            wire::ClientMessage::Identify {
+                key: "a1b2c3d4".to_owned()
+            }
+        );
+
+        let input = parse_client_message(
+            r#"{"type":"input","input":{"kind":"move","cell":{"x":3,"y":4}}}"#,
+        )
+        .ok()
+        .unwrap();
+        assert_eq!(
+            input,
+            wire::ClientMessage::Input {
+                input: wire::InputMessage {
+                    kind: wire::InputKind::Move,
+                    cell: wire::Cell { x: 3, y: 4 },
+                    def_id: None,
+                    rotation: None,
+                }
+            }
+        );
+
+        let drag = parse_client_message(
+            r#"{"type":"input","input":{"kind":"move","cell":{"x":3,"y":4},"def_id":"12","rotation":2}}"#,
+        )
+        .ok()
+        .unwrap();
+        let wire::ClientMessage::Input { input } = drag else {
+            panic!("expected input");
+        };
+        assert_eq!(input.def_id.as_deref(), Some("12"));
+        assert_eq!(input.rotation, Some(2));
     }
 
     #[test]
@@ -283,8 +329,8 @@ mod tests {
         )
         .ok()
         .unwrap();
-        let wire::ClientMessage::Command { command: a } = a;
-        let wire::ClientMessage::Command { command: b } = b;
+        let wire::ClientMessage::Command { command: a } = a else { panic!("expected command") };
+        let wire::ClientMessage::Command { command: b } = b else { panic!("expected command") };
         assert_eq!(canonical_command(&a), canonical_command(&b));
         // A different payload under the same id must differ.
         let mut c = a.clone();
@@ -297,16 +343,24 @@ mod tests {
 
     #[test]
     fn parse_placement_rejects_bad_wire_values() {
-        assert!(parse_placement("abc", 1, wire::Cell { x: 0, y: 0 }, 0).is_err());
-        assert!(parse_placement("1", 2, wire::Cell { x: 0, y: 0 }, 0).is_err());
-        assert!(parse_placement("1", 1, wire::Cell { x: 0, y: 0 }, 4).is_err());
-        let placement = parse_placement("3", 1, wire::Cell { x: -1, y: 20 }, 3)
-            .ok()
-            .unwrap();
+        assert!(parse_placement(None, "abc", 1, wire::Cell { x: 0, y: 0 }, 0).is_err());
+        assert!(parse_placement(None, "1", 2, wire::Cell { x: 0, y: 0 }, 0).is_err());
+        assert!(parse_placement(None, "1", 1, wire::Cell { x: 0, y: 0 }, 4).is_err());
+        let owner = city_simulation::ActorId("a1b2c3d4".to_owned());
+        let placement = parse_placement(
+            Some(owner.clone()),
+            "3",
+            1,
+            wire::Cell { x: -1, y: 20 },
+            3,
+        )
+        .ok()
+        .unwrap();
         assert_eq!(placement.def_id, AssetId(3));
         assert_eq!(placement.revision, 1);
         assert_eq!(placement.origin, Cell { x: -1, y: 20 });
         assert_eq!(placement.rotation, 3);
+        assert_eq!(placement.owner, Some(owner));
     }
 
     #[test]

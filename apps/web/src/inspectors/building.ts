@@ -35,6 +35,7 @@ export function mountInspector(container: HTMLElement, deps: InspectorDeps = {})
     const rows: Array<[string, string]> = [
       ["Name", definition?.recipe.name ?? `definition ${building.def_id} (missing)`],
       ["Id", building.id],
+      ["Owner", building.owner ? `player-${building.owner.slice(0, 4)}` : "—"],
       ["Cell", `${building.cell.x}, ${building.cell.y}`],
       ["Rotation", `${building.rotation} (${building.rotation * 90}°)`],
       ["Capacity", String(building.derived.capacity)],

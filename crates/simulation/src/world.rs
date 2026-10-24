@@ -21,6 +21,9 @@ pub struct Building {
     /// Minimum (top-left) footprint cell.
     pub origin: Cell,
     pub rotation: u8,
+    /// Owning actor, or `None` for buildings restored from a
+    /// pre-multiplayer (schema v1) database.
+    pub owner: Option<crate::id::ActorId>,
 }
 
 /// Grid membership test for a single cell.
@@ -218,6 +221,7 @@ mod tests {
                 revision: 1,
                 origin,
                 rotation: 0,
+                owner: None,
             },
             cells,
         );
@@ -276,6 +280,7 @@ mod tests {
             revision: 1,
             origin: Cell { x: 0, y: 0 },
             rotation: 0,
+            owner: None,
         };
         world.insert_building(make(BuildingId(1)), cells.clone());
         world.insert_building(make(BuildingId(2)), cells);
@@ -293,6 +298,7 @@ mod tests {
             revision: 1,
             origin,
             rotation: 0,
+            owner: None,
         };
         world.insert_building(make(Cell { x: 0, y: 0 }), first);
         world.insert_building(make(Cell { x: 5, y: 5 }), second);

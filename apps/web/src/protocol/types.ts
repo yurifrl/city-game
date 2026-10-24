@@ -1,4 +1,4 @@
-// Hand-maintained TS mirrors of the wire types (docs/contracts/milestone-1.md
+// Hand-maintained TS mirrors of the wire types (docs/contracts/multiplayer-stream.md
 // is normative; field names must match crates/protocol exactly, snake_case,
 // tagged unions on "type" / "result"). IDs are decimal strings (WireId).
 // JSON.parse only ever yields `number`, so u64 fields (tick, cost_credits) are
@@ -57,6 +57,8 @@ export interface BuildingTS {
   cell: CellTS;
   rotation: number;
   derived: DerivedStatsTS;
+  /** Owning actor id; the key is absent on the wire when unowned (M1 data). */
+  owner?: string | null;
 }
 
 export interface GridTS {
@@ -95,16 +97,38 @@ export type CommandTS =
       building_id: string;
     };
 
-export interface ClientMessageTS {
-  type: "command";
-  command: CommandTS;
+/** client → server envelope; identify must be the first message per connection. */
+export type ClientMessageTS =
+  | { type: "identify"; key: string }
+  | { type: "command"; command: CommandTS }
+  | { type: "input"; input: InputMessageTS };
+
+/** Pointer intent from a seat; def_id/rotation present only while armed. */
+export interface InputMessageTS {
+  kind: "move" | "down" | "up";
+  cell: CellTS;
+  def_id?: string;
+  rotation?: number;
 }
 
 export type EventTS =
   | { type: "building_placed"; building: BuildingTS }
-  | { type: "building_demolished"; building_id: string }
+  | { type: "building_demolished"; building_id: string; actor: string }
   | { type: "definition_published"; definition: AssetDefinitionTS }
-  | { type: "definition_removed"; def_id: string };
+  | { type: "definition_removed"; def_id: string }
+  | { type: "player_joined"; actor: string; label: string }
+  | { type: "player_left"; actor: string }
+  | { type: "presence"; presence: PresenceStateTS };
+
+/** A remote seat's cursor/drag state; def_id/rotation absent while idle. */
+export interface PresenceStateTS {
+  actor: string;
+  label: string;
+  cell: CellTS;
+  kind: "idle" | "drag";
+  def_id?: string;
+  rotation?: number;
+}
 
 /** `conflicting_building_id` is omitted on the wire when null. */
 export type CommandResultTS =
@@ -112,6 +136,7 @@ export type CommandResultTS =
       result: "accepted";
       command_id: string;
       building_id: string;
+      owner: string;
     }
   | {
       result: "rejected";
@@ -121,6 +146,7 @@ export type CommandResultTS =
     };
 
 export type ServerMessageTS =
-  | { type: "hello"; actor: string; world: WorldTS }
+  | { type: "hello"; you: string }
+  | { type: "helloworld"; world: WorldTS }
   | { type: "event"; event: EventTS }
   | { type: "command_result"; result: CommandResultTS };

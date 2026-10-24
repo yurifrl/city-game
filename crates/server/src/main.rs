@@ -1,5 +1,5 @@
 //! City server: authoritative world owner, HTTP API, WebSocket replication.
-//! Contract: docs/contracts/milestone-1.md. Run from the repo root:
+//! Contract: docs/contracts/multiplayer-stream.md. Run from the repo root:
 //! binds 127.0.0.1:8080, persists ./data/city.db, serves ./apps/web/dist.
 
 mod adapter;
@@ -13,11 +13,21 @@ use std::path::Path;
 
 use city_simulation::{AssetCatalogue, WorldState};
 
-/// Contract binding (docs/contracts/milestone-1.md). `CITY_BIND` exists only
+/// Contract binding (docs/contracts/multiplayer-stream.md). `CITY_BIND` exists only
 /// so local smoke tests can avoid a port taken by an unrelated service.
 const BIND_ADDR: &str = "127.0.0.1:8080";
 const DB_PATH: &str = "./data/city.db";
 const DIST_DIR: &str = "./apps/web/dist";
+const PRESENCE_TTL_SECS: u64 = 30;
+const PLAYER_TTL_SECS: u64 = 1800;
+
+/// Positive-integer env override, or the default when unset/invalid.
+fn env_secs(key: &str, default: u64) -> u64 {
+    match std::env::var(key) {
+        Ok(value) => value.trim().parse::<u64>().unwrap_or(default),
+        Err(_) => default,
+    }
+}
 
 #[tokio::main]
 async fn main() {
@@ -55,6 +65,10 @@ async fn run() -> Result<(), String> {
         store,
         world_rx,
         hub_tx.clone(),
+        runner::TtlConfig {
+            presence_secs: env_secs("CITY_PRESENCE_TTL_SECS", PRESENCE_TTL_SECS),
+            player_secs: env_secs("CITY_PLAYER_TTL_SECS", PLAYER_TTL_SECS),
+        },
     ));
 
     let app = http::App {

@@ -2,4 +2,9 @@
 import type { Cell } from "./Cell";
 import type { DerivedStats } from "./DerivedStats";
 
-export type BuildingDto = { id: string, def_id: string, revision: number, cell: Cell, rotation: number, derived: DerivedStats, };
+export type BuildingDto = { id: string, def_id: string, revision: number, cell: Cell, rotation: number, derived: DerivedStats, 
+/**
+ * Owner actor, resolved server-side. Absent on the wire when the
+ * building predates multiplayer (restored from a v1 database).
+ */
+owner: string | null, };

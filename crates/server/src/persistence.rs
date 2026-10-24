@@ -1,7 +1,7 @@
 //! SQLite persistence. One `Store` owns the single connection; it lives on
 //! the world runner so all reads and writes happen in command order.
 //!
-//! Schema is normative: docs/contracts/milestone-1.md §Persistence schema.
+//! Schema is normative: docs/contracts/multiplayer-stream.md §Persistence schema.
 //! WAL + `synchronous=FULL`; every accepted command commits its mutation,
 //! the meta counters, and its receipt in exactly one transaction before any
 //! broadcast happens.
@@ -10,11 +10,12 @@ use std::path::Path;
 
 use city_protocol::{DerivedStats, Recipe};
 use city_simulation::{
-    from_save, AssetCatalogue, AssetId, BuildingId, SaveAsset, SaveBuilding, WorldSave, WorldState,
+    from_save, ActorId, AssetCatalogue, AssetId, BuildingId, SaveAsset, SaveBuilding, WorldSave,
+    WorldState,
 };
 use rusqlite::{Connection, OptionalExtension, Transaction};
 
-pub(crate) const SCHEMA_VERSION: &str = "1";
+pub(crate) const SCHEMA_VERSION: &str = "2";
 
 const SCHEMA_SQL: &str = "
 CREATE TABLE IF NOT EXISTS meta (
@@ -34,7 +35,12 @@ CREATE TABLE IF NOT EXISTS buildings (
   cell_x INTEGER NOT NULL,
   cell_y INTEGER NOT NULL,
   rotation INTEGER NOT NULL,
+  owner TEXT,
   command_id TEXT NOT NULL UNIQUE
+);
+CREATE TABLE IF NOT EXISTS players (
+  actor TEXT PRIMARY KEY,
+  label TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS receipts (
   command_id TEXT PRIMARY KEY,
@@ -44,7 +50,7 @@ CREATE TABLE IF NOT EXISTS receipts (
 ";
 
 /// The seed catalogue inserted exactly once, on an empty database.
-/// Values are fixed by docs/contracts/milestone-1.md (ids 1, 2, 3).
+/// Values are fixed by docs/contracts/multiplayer-stream.md (ids 1, 2, 3).
 pub(crate) fn seed_recipes() -> [Recipe; 3] {
     [
         Recipe {
@@ -86,6 +92,14 @@ pub(crate) fn seed_recipes() -> [Recipe; 3] {
     ]
 }
 
+/// Stable player label: `player-` + the first 4 hex characters of the key.
+/// Derived, never stored twice, identical across reconnects.
+pub(crate) fn label_for(actor: &ActorId) -> String {
+    let key = &actor.0;
+    let prefix: String = key.chars().take(4).collect();
+    format!("player-{prefix}")
+}
+
 pub(crate) struct Store {
     conn: Connection,
 }
@@ -110,7 +124,43 @@ impl Store {
             .map_err(|err| format!("cannot enable synchronous=FULL: {err}"))?;
         conn.execute_batch(SCHEMA_SQL)
             .map_err(|err| format!("cannot create schema: {err}"))?;
+        Self::migrate(&conn)?;
         Ok(Store { conn })
+    }
+
+    /// Brings a pre-M2 (schema_version 1) database up to the current schema
+    /// in one transaction: the nullable `buildings.owner` column plus the
+    /// `players` table. M1 rows never had an actor, so `owner` stays NULL.
+    fn migrate(conn: &Connection) -> Result<(), String> {
+        let version = conn
+            .query_row(
+                "SELECT value FROM meta WHERE key = 'schema_version'",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|err| format!("cannot read schema_version: {err}"))?;
+        // A fresh database has no schema_version yet; seed() writes it.
+        match version.as_deref() {
+            None | Some("2") => Ok(()),
+            Some("1") => {
+                let tx = conn
+                    .unchecked_transaction()
+                    .map_err(|err| format!("cannot begin migration: {err}"))?;
+                tx.execute_batch(
+                    "ALTER TABLE buildings ADD COLUMN owner TEXT;
+                     CREATE TABLE IF NOT EXISTS players (
+                       actor TEXT PRIMARY KEY,
+                       label TEXT NOT NULL
+                     );",
+                )
+                .map_err(|err| format!("cannot migrate schema 1 → 2: {err}"))?;
+                Self::set_meta(&tx, "schema_version", SCHEMA_VERSION)?;
+                tx.commit()
+                    .map_err(|err| format!("cannot commit migration: {err}"))
+            }
+            Some(other) => Err(format!("unknown schema_version {other:?}")),
+        }
     }
 
     /// True when the database has never been initialized (no schema_version).
@@ -220,7 +270,8 @@ impl Store {
         let mut statement = self
             .conn
             .prepare(
-                "SELECT id, def_id, revision, cell_x, cell_y, rotation FROM buildings ORDER BY id",
+                "SELECT id, def_id, revision, cell_x, cell_y, rotation, owner
+                 FROM buildings ORDER BY id",
             )
             .map_err(|err| format!("cannot read buildings: {err}"))?;
         let buildings = statement
@@ -234,6 +285,9 @@ impl Store {
                         y: row.get::<_, i64>(4)? as i32,
                     },
                     rotation: row.get::<_, i64>(5)? as u8,
+                    owner: row
+                        .get::<_, Option<String>>(6)?
+                        .map(ActorId)
                 })
             })
             .map_err(|err| format!("cannot read buildings: {err}"))?
@@ -281,6 +335,22 @@ impl Store {
         }
     }
 
+    /// Idempotently records an actor's stable label. Per the contract the
+    /// label is derived from the key itself (`player-` + first 4 hex chars),
+    /// so the INSERT-or-IGNORE never needs an update: the same actor always
+    /// produces the same label.
+    pub(crate) fn ensure_player(&self, actor: &ActorId) -> Result<String, String> {
+        let label = label_for(actor);
+        self.conn
+            .execute(
+                "INSERT INTO players (actor, label) VALUES (?1, ?2)
+                 ON CONFLICT(actor) DO NOTHING",
+                rusqlite::params![actor.0, label],
+            )
+            .map_err(|err| format!("cannot persist player {}: {err}", actor.0))?;
+        Ok(label)
+    }
+
     /// One transaction: building row + meta counter + receipt. Called only
     /// after the domain accepted the placement, so any failure here is an
     /// infrastructure error the caller must resync from.
@@ -297,8 +367,8 @@ impl Store {
             .unchecked_transaction()
             .map_err(|err| format!("cannot begin transaction: {err}"))?;
         tx.execute(
-            "INSERT INTO buildings (id, def_id, revision, cell_x, cell_y, rotation, command_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT INTO buildings (id, def_id, revision, cell_x, cell_y, rotation, owner, command_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             rusqlite::params![
                 building.id.0 as i64,
                 building.def_id.0 as i64,
@@ -306,6 +376,7 @@ impl Store {
                 building.origin.x,
                 building.origin.y,
                 building.rotation,
+                building.owner.as_ref().map(|actor| actor.0.as_str()),
                 command_id
             ],
         )
@@ -454,7 +525,7 @@ mod tests {
             .unwrap()
             .collect::<Result<_, _>>()
             .unwrap();
-        assert_eq!(tables, ["assets", "buildings", "meta", "receipts"]);
+        assert_eq!(tables, ["assets", "buildings", "meta", "players", "receipts"]);
     }
 
     #[test]
@@ -467,7 +538,7 @@ mod tests {
         assert!(store.seed().is_err(), "seeding twice must fail loudly");
 
         // Meta counters per contract.
-        assert_eq!(store.meta("schema_version").unwrap().as_deref(), Some("1"));
+        assert_eq!(store.meta("schema_version").unwrap().as_deref(), Some("2"));
         assert_eq!(store.meta("tick").unwrap().as_deref(), Some("0"));
         assert_eq!(
             store.meta("next_building_id").unwrap().as_deref(),
@@ -491,6 +562,7 @@ mod tests {
         let outcome = city_protocol::CommandResult::Accepted {
             command_id: "c1".to_owned(),
             building_id: "7".to_owned(),
+            owner: "a1b2c3d4".to_owned(),
         };
         store.commit_rejection("c1", payload, &outcome).unwrap();
 
@@ -514,10 +586,12 @@ mod tests {
             revision: 1,
             origin: city_simulation::Cell { x: 4, y: 4 },
             rotation: 0,
+            owner: Some(ActorId("a1b2c3d4".to_owned())),
         };
         let outcome = city_protocol::CommandResult::Accepted {
             command_id: "p1".to_owned(),
             building_id: "1".to_owned(),
+            owner: "a1b2c3d4".to_owned(),
         };
         store
             .commit_place(&building, 2, "p1", payload, &outcome)
@@ -561,5 +635,62 @@ mod tests {
             .unwrap();
         let err = store.receipt("c9").unwrap_err();
         assert!(err.contains("corrupt"), "got: {err}");
+    }
+
+    #[test]
+    fn ensure_player_is_idempotent_and_derives_label() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = store_in(dir.path());
+        let actor = ActorId("a1b2c3d4-0000-4000-8000-000000000000".to_owned());
+        let label = store.ensure_player(&actor).unwrap();
+        assert_eq!(label, "player-a1b2");
+
+        // Same actor again: no error, same label.
+        let again = store.ensure_player(&actor).unwrap();
+        assert_eq!(again, label);
+
+        // Exactly one row, label persisted.
+        let (stored_actor, stored_label): (String, String) = store
+            .conn
+            .query_row("SELECT actor, label FROM players", [], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
+            .unwrap();
+        assert_eq!(stored_actor, actor.0);
+        assert_eq!(stored_label, "player-a1b2");
+    }
+
+    #[test]
+    fn v1_database_migrates_to_v2_and_keeps_rows() {
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let conn = Connection::open(dir.path().join("city.db")).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                 CREATE TABLE buildings (
+                   id INTEGER PRIMARY KEY,
+                   def_id INTEGER NOT NULL,
+                   revision INTEGER NOT NULL,
+                   cell_x INTEGER NOT NULL,
+                   cell_y INTEGER NOT NULL,
+                   rotation INTEGER NOT NULL,
+                   command_id TEXT NOT NULL UNIQUE
+                 );
+                 INSERT INTO meta VALUES ('schema_version', '1');
+                 INSERT INTO meta VALUES ('tick', '7');
+                 INSERT INTO meta VALUES ('next_building_id', '2');
+                 INSERT INTO meta VALUES ('next_asset_id', '1');
+                 INSERT INTO buildings VALUES (1, 1, 1, 4, 4, 0, 'p0');",
+            )
+            .unwrap();
+        }
+        let store = Store::open(&dir.path().join("city.db")).unwrap();
+        assert_eq!(store.meta("schema_version").unwrap().as_deref(), Some("2"));
+
+        // The M1 building survives with a NULL owner.
+        let save = store.load().unwrap();
+        assert_eq!(save.tick, 7);
+        assert_eq!(save.buildings.len(), 1);
+        assert_eq!(save.buildings[0].owner, None);
     }
 }

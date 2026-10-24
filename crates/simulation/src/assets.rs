@@ -199,7 +199,7 @@ mod tests {
         }
     }
 
-    /// Seed catalogue from docs/contracts/milestone-1.md with values derived
+    /// Seed catalogue from docs/contracts/multiplayer-stream.md with values derived
     /// exactly from the contracts table:
     /// capacity = floor(w·h·floors·density), cost = w·h·floors·cost_per_cell.
     #[test]

@@ -1,0 +1,77 @@
+:root {
+  color-scheme: dark;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #101014;
+  color: #e6e6ea;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.85rem;
+  border-bottom: 1px solid #26262e;
+}
+
+.title strong {
+  color: #9ecbff;
+}
+
+.badge {
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: #2a2a34;
+  font-variant: small-caps;
+  letter-spacing: 0.04em;
+}
+
+.badge.controller {
+  background: #1d4023;
+  color: #9fe0a8;
+}
+
+.badge.spectator {
+  background: #42341d;
+  color: #e0c89f;
+}
+
+.muted {
+  color: #8a8a96;
+}
+
+.stage {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 0.75rem;
+}
+
+canvas#screen {
+  max-width: 100%;
+  max-height: calc(100vh - 3rem);
+  border: 1px solid #2a2a34;
+  border-radius: 6px;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(16 16 20 / 0.75);
+  font-size: 1.1rem;
+}

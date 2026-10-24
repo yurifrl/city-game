@@ -6,7 +6,13 @@
 // server's message. Unarmed clicks pick buildings for the inspector.
 
 import type { Scene } from "@babylonjs/core";
-import type { AssetDefinitionTS, CellTS, CommandResultTS, CommandTS } from "../protocol/types";
+import type {
+  AssetDefinitionTS,
+  CellTS,
+  CommandResultTS,
+  CommandTS,
+  InputMessageTS,
+} from "../protocol/types";
 import type { BuildingViews } from "../renderer/buildings";
 import type { Ghost } from "../renderer/ghost";
 import { cellFromPoint } from "../renderer/grid";
@@ -23,6 +29,8 @@ export interface PlacementDeps {
   ghost: Ghost;
   views: BuildingViews;
   send(command: CommandTS): Promise<CommandResultTS>;
+  /** Broadcasts this seat's pointer intent; fire-and-forget (no receipts). */
+  sendInput(input: InputMessageTS): void;
   nextCommandId(): string;
   onSelectBuilding(id: string | null): void;
   onArm(def: AssetDefinitionTS): void;
@@ -51,12 +59,23 @@ export class PlacementTool {
     this.pending = false;
     this.deps.onSelectBuilding(null);
     this.deps.onArm(def);
+    // First armed packet: the seat is "in drag mode" the moment the tool
+    // arms, even before the pointer next moves.
+    this.deps.sendInput({
+      kind: "move",
+      cell: this.hovered ?? { x: 0, y: 0 },
+      def_id: def.id,
+      rotation: this.rotation,
+    });
     this.refreshHover();
   }
 
   disarm(): void {
     this.armed = null;
     this.deps.onDisarm();
+    // Un-arming clears the remote drag state; re-arming after rotation needs
+    // the same packet shape, so the rotation is never carried over.
+    this.deps.sendInput({ kind: "move", cell: this.hovered ?? { x: 0, y: 0 } });
     this.deps.ghost.hide();
     this.deps.grid.setHover(this.hovered, "neutral");
   }
@@ -74,16 +93,41 @@ export class PlacementTool {
       return;
     }
     this.hovered = cell;
+    if (cell) {
+      // Remote seats see this cursor; armed packets carry the tool state so
+      // the server derives the drag flag (latest input wins).
+      const input: InputMessageTS = { kind: "move", cell };
+      if (this.armed) {
+        input.def_id = this.armed.id;
+        input.rotation = this.rotation;
+      }
+      this.deps.sendInput(input);
+    }
     this.refreshHover();
   };
 
   private onPointerDown = (ev: PointerEvent): void => {
     this.downAt = { x: ev.clientX, y: ev.clientY };
+    const cell = this.pickCell(ev);
+    if (cell) {
+      // The press brackets the pointer gesture for remote seats; armed
+      // packets keep carrying the tool state.
+      const input: InputMessageTS = { kind: "down", cell };
+      if (this.armed) {
+        input.def_id = this.armed.id;
+        input.rotation = this.rotation;
+      }
+      this.deps.sendInput(input);
+    }
   };
 
   private onPointerUp = (ev: PointerEvent): void => {
     const down = this.downAt;
     this.downAt = null;
+    if (down) {
+      const cell = this.pickCell(ev);
+      if (cell) this.deps.sendInput({ kind: "up", cell });
+    }
     if (!down) return;
     const movedPx = Math.hypot(ev.clientX - down.x, ev.clientY - down.y);
     if (movedPx > CLICK_SLOP_PX) return; // camera drag, not a click
@@ -97,6 +141,14 @@ export class PlacementTool {
     }
     if ((ev.key === "r" || ev.key === "R") && this.armed) {
       this.rotation = (this.rotation + 1) % 4;
+      if (this.hovered) {
+        this.deps.sendInput({
+          kind: "move",
+          cell: this.hovered,
+          def_id: this.armed.id,
+          rotation: this.rotation,
+        });
+      }
       this.refreshHover();
       return;
     }

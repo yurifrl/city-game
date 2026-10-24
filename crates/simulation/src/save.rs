@@ -14,6 +14,11 @@ pub struct SaveBuilding {
     pub revision: u32,
     pub cell: Cell,
     pub rotation: u8,
+    /// Owning actor id; `None` only for buildings restored from a
+    /// pre-multiplayer (schema v1) database. Serialized so saves written
+    /// by this version carry ownership across restarts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner: Option<crate::id::ActorId>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -45,6 +50,7 @@ pub fn to_save(world: &WorldState, catalogue: &AssetCatalogue) -> WorldSave {
                 revision: building.revision,
                 cell: building.origin,
                 rotation: building.rotation,
+                owner: building.owner.clone(),
             })
             .collect(),
         assets: catalogue
@@ -142,6 +148,7 @@ pub fn from_save(save: &WorldSave) -> Result<(WorldState, AssetCatalogue), Strin
                 revision: record.revision,
                 origin: record.cell,
                 rotation: record.rotation,
+                owner: record.owner.clone(),
             },
             cells,
         );
@@ -198,6 +205,7 @@ mod tests {
             revision: 1,
             origin,
             rotation,
+            owner: None,
         }
     }
 
@@ -313,6 +321,7 @@ mod tests {
             revision: 1,
             cell: Cell { x: 4, y: 5 },
             rotation: 0,
+            owner: None,
         });
         save.next_building_id = 11; // keep the counter coherent
 
@@ -331,6 +340,7 @@ mod tests {
             revision: 1,
             cell: Cell { x: 3, y: 5 },
             rotation: 0,
+            owner: None,
         });
         save.next_building_id = 12; // keep the counter coherent
 
@@ -348,6 +358,7 @@ mod tests {
             revision: 1,
             cell: Cell { x: 95, y: 95 },
             rotation: 0,
+            owner: None,
         });
         save.next_building_id = 13; // keep the counter coherent
 

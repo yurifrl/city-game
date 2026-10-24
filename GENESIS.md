@@ -1,6 +1,6 @@
 # Genesis: a city worth understanding, built together
 
-Status: project definition, not an implemented game. The repository was empty when this document was written. Technical decisions are in [architecture](docs/architecture.md), their evidence in [research](docs/research.md), and delivery order in the [plan](.agents/plans/2026-09-07_13-12-city-genesis.md).
+Status: project definition, not an implemented game. The repository was empty when this document was written. Technical decisions are in [architecture](docs/architecture.md), their evidence in [research](docs/research.md), and the current M2 contract in [docs/contracts/multiplayer-stream.md](docs/contracts/multiplayer-stream.md).
 
 ## Why this project exists
 

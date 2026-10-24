@@ -41,6 +41,8 @@ import { Ghost } from "./renderer/ghost";
 import { PlacementTool } from "./tools/placement";
 import { WorldReplica } from "./world/replica";
 import { showToast } from "./ui/toast";
+import { PresenceBoard } from "./presence/board";
+import { PresenceLayer } from "./presence/view";
 
 function requiredElement(id: string): HTMLElement {
   const el = document.getElementById(id);
@@ -76,10 +78,21 @@ async function boot(): Promise<void> {
   sun.intensity = 0.7;
 
   const replica = new WorldReplica();
+  const presenceBoard = new PresenceBoard();
   const gridView = createGrid(scene, { width: 96, height: 96 });
   const views = new BuildingViews();
   const ghost = new Ghost(scene);
   const cameraRig = createCamera(scene, canvas, new Vector3(48, 0, 48));
+  const presenceLayer = new PresenceLayer({
+    scene,
+    engine,
+    camera: cameraRig.camera,
+    replica,
+    board: presenceBoard,
+    host: requiredElement("presence-overlay"),
+    selfActor: null,
+  });
+  const identityChip = requiredElement("identity-chip");
 
   // Browser-console debug handle for E2E tests and diagnostics, not a game surface.
   (window as unknown as Record<string, unknown>).__city = {
@@ -141,6 +154,7 @@ async function boot(): Promise<void> {
     ghost,
     views,
     send: (command) => client.send(command),
+    sendInput: (input) => client.sendInput(input),
     nextCommandId: () => replica.nextCommandId(),
     onSelectBuilding: (id) => {
       if (!id) {
@@ -212,41 +226,46 @@ async function boot(): Promise<void> {
     refreshCatalogue: (def) => upsertCatalogueEntry(def),
   };
 
-  // Editors are a parallel milestone task (m1-04); until its implementations
-  // land, the stubs throw — surface that explicitly instead of dying at boot.
-  try {
-    mountCatalogue(
-      requiredElement("catalogue"),
-      replica.definitions(),
-      (def) => {
-        placement.arm(def);
-        showToast(`placing ${def.recipe.name} — click the grid · R rotate · Esc cancel`, "info");
-      },
-      (def) => openDetail(def),
-    );
-    mountDesigner(requiredElement("designer"), designerDeps);
-  } catch (err) {
-    console.warn("editor modules unavailable on this branch (m1-04 pending)", err);
-    const catalogue = requiredElement("catalogue");
-    const designer = requiredElement("designer");
-    catalogue.replaceChildren(notice("Catalogue arrives with the designer task (m1-04)."));
-    designer.replaceChildren(notice("Designer arrives with task m1-04."));
-  }
-
-  function notice(text: string): HTMLElement {
-    const el = document.createElement("p");
-    el.className = "notice";
-    el.textContent = text;
-    return el;
-  }
+  mountCatalogue(
+    requiredElement("catalogue"),
+    replica.definitions(),
+    (def) => {
+      placement.arm(def);
+      showToast(`placing ${def.recipe.name} — click the grid · R rotate · Esc cancel`, "info");
+    },
+    (def) => openDetail(def),
+  );
+  mountDesigner(requiredElement("designer"), designerDeps);
 
   const client = new CityClient({
+    onIdentified: (you) => {
+      presenceLayer.setSelfActor(you);
+      identityChip.textContent = `you: ${you.slice(0, 4)}`;
+    },
     onHello: (world) => {
+      presenceBoard.clear();
       replica.applySnapshot(world);
       for (const def of world.definitions) onDefinition(def);
       for (const building of world.buildings) refreshInstances(keyOf(building));
+      // Seat boot readiness for the E2E harness: the authoritative snapshot
+      // is applied, so the screencast now shows the real world, not a blank
+      // scene. Must fire after applySnapshot, before first paint settles.
+      (window as unknown as Record<string, unknown>).__cityReady = true;
     },
     onEvent: (event) => {
+      switch (event.type) {
+        case "player_joined":
+          presenceBoard.join(event.actor, event.label);
+          return;
+        case "player_left":
+          presenceBoard.leave(event.actor);
+          return;
+        case "presence":
+          presenceBoard.apply(event.presence);
+          return;
+        default:
+          break;
+      }
       const diff = replica.applyEvent(event);
       if (event.type === "definition_published" && diff.published) onDefinition(diff.published);
       if (event.type === "definition_removed" && diff.removedDef) {

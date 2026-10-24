@@ -1,6 +1,6 @@
 # Architecture decisions
 
-Status: chosen starting architecture and explicit design targets; no implementation or benchmark yet. [Genesis](../GENESIS.md) defines intent, [research](research.md) supplies evidence, and the [delivery plan](../.agents/plans/2026-09-07_13-12-city-genesis.md) orders implementation.
+Status: chosen starting architecture and explicit design targets; no implementation or benchmark yet. [Genesis](../GENESIS.md) defines intent, [research](research.md) supplies evidence, and the current M2 contract orders implementation.
 
 ## 1. Stack decision
 

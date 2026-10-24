@@ -1,9 +1,10 @@
-//! Wire-shape tests: the JSON frames defined in docs/contracts/milestone-1.md
+//! Wire-shape tests: the JSON frames defined in docs/contracts/multiplayer-stream.md
 //! are normative, so every frame here must roundtrip byte for byte.
 
 use city_protocol::{
     Archetype, AssetDefinition, BuildingDto, Cell, ClientMessage, Command, CommandResult,
-    DerivedStats, Event, GridDto, Recipe, RejectCode, ServerMessage, WindowStyle, WorldDto,
+    DerivedStats, Event, GridDto, InputKind, InputMessage, PresenceKind, PresenceState, Recipe,
+    RejectCode, ServerMessage, WindowStyle, WorldDto,
 };
 
 fn cedar() -> Recipe {
@@ -18,6 +19,25 @@ fn cedar() -> Recipe {
         window_style: WindowStyle::Grid,
         seed: 11,
         parts: Vec::new(),
+    }
+}
+
+fn cell(x: i32, y: i32) -> Cell {
+    Cell { x, y }
+}
+
+fn building(id: &str, owner: Option<&str>) -> BuildingDto {
+    BuildingDto {
+        id: id.into(),
+        def_id: "1".into(),
+        revision: 1,
+        cell: Cell { x: 10, y: 12 },
+        rotation: 0,
+        derived: DerivedStats {
+            capacity: 2,
+            cost_credits: 2160,
+        },
+        owner: owner.map(Into::into),
     }
 }
 
@@ -85,86 +105,136 @@ fn command_frames_deserialize_from_contract_json() {
     );
 }
 
-/// Domain ids cross the wire as decimal strings so they stay safe above 2^53
-/// in JavaScript.
 #[test]
 fn wire_ids_stay_decimal_strings() {
-    let dto = BuildingDto {
-        id: "9007199254740993".into(),
-        def_id: "1".into(),
-        revision: 1,
-        cell: Cell { x: 1, y: 2 },
-        rotation: 0,
-        derived: DerivedStats {
-            capacity: 2,
-            cost_credits: 2160,
-        },
-    };
+    let dto = building("9007199254740993", None);
     let json = serde_json::to_string(&dto).unwrap();
     assert!(json.contains(r#""id":"9007199254740993""#), "got: {json}");
     assert!(json.contains(r#""def_id":"1""#), "got: {json}");
     assert_eq!(serde_json::from_str::<BuildingDto>(&json).unwrap(), dto);
 }
 
+/// A v1 building (no owner key on the wire) still deserializes, and `owner`
+/// is absent — never null — when there is none.
 #[test]
-fn hello_frame_matches_contract_shape() {
+fn building_owner_absent_when_none_and_survives_v1_payload() {
+    let no_owner = building("1", None);
+    let json = serde_json::to_string(&no_owner).unwrap();
+    assert!(!json.contains("owner"), "got: {json}");
+    // v1 wire payload with no owner key must still parse (serde default).
+    let parsed: BuildingDto = serde_json::from_str(
+        r#"{"id":"1","def_id":"1","revision":1,"cell":{"x":10,"y":12},"rotation":0,"derived":{"capacity":2,"cost_credits":2160}}"#,
+    )
+    .unwrap();
+    assert_eq!(parsed, no_owner);
+    assert_eq!(parsed.owner, None);
+
+    let owned = building("2", Some("a1b2"));
+    let json = serde_json::to_string(&owned).unwrap();
+    assert!(json.contains(r#""owner":"a1b2""#), "got: {json}");
+    assert_eq!(serde_json::from_str::<BuildingDto>(&json).unwrap(), owned);
+}
+
+/// The first frame on a fresh connection confirms identity and carries no
+/// world data; `helloworld` follows as its own frame.
+#[test]
+fn hello_frames_split_identity_from_world() {
+    let hello = ServerMessage::Hello { you: "a1b2c3d4".into() };
+    assert_eq!(
+        serde_json::to_string(&hello).unwrap(),
+        r#"{"type":"hello","you":"a1b2c3d4"}"#
+    );
+    let parsed: ServerMessage = serde_json::from_str(r#"{"type":"hello","you":"a1b2c3d4"}"#).unwrap();
+    assert_eq!(parsed, hello);
+
     let world = WorldDto {
-        grid: GridDto {
-            width: 96,
-            height: 96,
-        },
+        grid: GridDto { width: 96, height: 96 },
         tick: 0,
         buildings: vec![],
         definitions: vec![],
     };
-    let hello: ServerMessage = serde_json::from_str(
-        r#"{"type":"hello","actor":"owner","world":{"grid":{"width":96,"height":96},"tick":0,"buildings":[],"definitions":[]}}"#,
-    )
-    .unwrap();
+    let hello_world = ServerMessage::HelloWorld { world };
     assert_eq!(
-        hello,
-        ServerMessage::Hello {
-            actor: "owner".into(),
-            world,
-        }
+        serde_json::to_string(&hello_world).unwrap(),
+        r#"{"type":"helloworld","world":{"grid":{"width":96,"height":96},"tick":0,"buildings":[],"definitions":[]}}"#
+    );
+}
+
+/// The old M1 combined hello frame must be gone: no `actor`/`world` keys in
+/// `hello`, and no combined shape parses.
+#[test]
+fn hello_no_longer_carries_actor_or_world() {
+    assert!(serde_json::from_str::<ServerMessage>(r#"{"type":"hello","actor":"owner","world":{"grid":{"width":96,"height":96},"tick":0,"buildings":[],"definitions":[]}}"#).is_err());
+}
+
+#[test]
+fn identify_and_input_frames_roundtrip() {
+    let identify = ClientMessage::Identify { key: "a1b2c3d4-0000-4000-8000-000000000000".into() };
+    assert_eq!(
+        serde_json::to_string(&identify).unwrap(),
+        r#"{"type":"identify","key":"a1b2c3d4-0000-4000-8000-000000000000"}"#
     );
     assert_eq!(
-        serde_json::to_string(&hello).unwrap(),
-        r#"{"type":"hello","actor":"owner","world":{"grid":{"width":96,"height":96},"tick":0,"buildings":[],"definitions":[]}}"#
+        serde_json::from_str::<ClientMessage>(r#"{"type":"identify","key":"k"}"#).unwrap(),
+        ClientMessage::Identify { key: "k".into() }
     );
+
+    // Bare hover: no def fields at all.
+    let move_frame = ClientMessage::Input {
+        input: InputMessage {
+            kind: InputKind::Move,
+            cell: cell(3, 4),
+            def_id: None,
+            rotation: None,
+        },
+    };
+    assert_eq!(
+        serde_json::to_string(&move_frame).unwrap(),
+        r#"{"type":"input","input":{"kind":"move","cell":{"x":3,"y":4}}}"#
+    );
+    let parsed: ClientMessage =
+        serde_json::from_str(r#"{"type":"input","input":{"kind":"move","cell":{"x":3,"y":4}}}"#).unwrap();
+    assert_eq!(parsed, move_frame);
+
+    // Armed drag sample carries def_id + rotation.
+    let drag = ClientMessage::Input {
+        input: InputMessage {
+            kind: InputKind::Move,
+            cell: cell(5, 6),
+            def_id: Some("12".into()),
+            rotation: Some(2),
+        },
+    };
+    assert_eq!(
+        serde_json::to_string(&drag).unwrap(),
+        r#"{"type":"input","input":{"kind":"move","cell":{"x":5,"y":6},"def_id":"12","rotation":2}}"#
+    );
+    let parsed: ClientMessage =
+        serde_json::from_str(r#"{"type":"input","input":{"kind":"move","cell":{"x":5,"y":6},"def_id":"12","rotation":2}}"#).unwrap();
+    assert_eq!(parsed, drag);
 }
 
 #[test]
 fn event_frames_match_contract_shapes() {
-    let building = BuildingDto {
-        id: "1".into(),
-        def_id: "1".into(),
-        revision: 1,
-        cell: Cell { x: 10, y: 12 },
-        rotation: 0,
-        derived: DerivedStats {
-            capacity: 2,
-            cost_credits: 2160,
-        },
-    };
     assert_eq!(
         serde_json::to_string(&ServerMessage::Event {
-            event: Event::BuildingPlaced { building }
+            event: Event::BuildingPlaced { building: building("1", Some("a1b2")) }
         })
         .unwrap(),
         concat!(
             r#"{"type":"event","event":{"type":"building_placed","#,
-            r#""building":{"id":"1","def_id":"1","revision":1,"cell":{"x":10,"y":12},"rotation":0,"derived":{"capacity":2,"cost_credits":2160}}}}"#
+            r#""building":{"id":"1","def_id":"1","revision":1,"cell":{"x":10,"y":12},"rotation":0,"derived":{"capacity":2,"cost_credits":2160},"owner":"a1b2"}}}"#
         )
     );
     assert_eq!(
         serde_json::to_string(&ServerMessage::Event {
             event: Event::BuildingDemolished {
-                building_id: "7".into()
+                building_id: "7".into(),
+                actor: "a1b2c3d4".into(),
             }
         })
         .unwrap(),
-        r#"{"type":"event","event":{"type":"building_demolished","building_id":"7"}}"#
+        r#"{"type":"event","event":{"type":"building_demolished","building_id":"7","actor":"a1b2c3d4"}}"#
     );
 
     let published = ServerMessage::Event {
@@ -209,16 +279,81 @@ fn event_frames_match_contract_shapes() {
 }
 
 #[test]
+fn presence_frames_match_contract_shapes() {
+    // Idle cursor: kind "idle", no def fields on the wire.
+    let idle = ServerMessage::Event {
+        event: Event::Presence {
+            presence: PresenceState {
+                actor: "a1b2c3d4".into(),
+                label: "player-a1b2".into(),
+                cell: cell(3, 4),
+                kind: PresenceKind::Idle,
+                def_id: None,
+                rotation: None,
+            },
+        },
+    };
+    let idle_json = serde_json::to_string(&idle).unwrap();
+    assert_eq!(
+        idle_json,
+        r#"{"type":"event","event":{"type":"presence","presence":{"actor":"a1b2c3d4","label":"player-a1b2","cell":{"x":3,"y":4},"kind":"idle"}}}"#
+    );
+    assert_eq!(serde_json::from_str::<ServerMessage>(&idle_json).unwrap(), idle);
+
+    // Armed drag: kind "drag" plus def_id and rotation.
+    let drag = ServerMessage::Event {
+        event: Event::Presence {
+            presence: PresenceState {
+                actor: "a1b2c3d4".into(),
+                label: "player-a1b2".into(),
+                cell: cell(5, 6),
+                kind: PresenceKind::Drag,
+                def_id: Some("12".into()),
+                rotation: Some(2),
+            },
+        },
+    };
+    let drag_json = serde_json::to_string(&drag).unwrap();
+    assert_eq!(
+        drag_json,
+        r#"{"type":"event","event":{"type":"presence","presence":{"actor":"a1b2c3d4","label":"player-a1b2","cell":{"x":5,"y":6},"kind":"drag","def_id":"12","rotation":2}}}"#
+    );
+    assert_eq!(serde_json::from_str::<ServerMessage>(&drag_json).unwrap(), drag);
+}
+
+#[test]
+fn joined_and_left_frames_match_contract_shapes() {
+    assert_eq!(
+        serde_json::to_string(&ServerMessage::Event {
+            event: Event::PlayerJoined {
+                actor: "a1b2c3d4".into(),
+                label: "player-a1b2".into(),
+            }
+        })
+        .unwrap(),
+        r#"{"type":"event","event":{"type":"player_joined","actor":"a1b2c3d4","label":"player-a1b2"}}"#
+    );
+    assert_eq!(
+        serde_json::to_string(&ServerMessage::Event {
+            event: Event::PlayerLeft { actor: "a1b2c3d4".into() }
+        })
+        .unwrap(),
+        r#"{"type":"event","event":{"type":"player_left","actor":"a1b2c3d4"}}"#
+    );
+}
+
+#[test]
 fn command_result_frames_match_contract_shapes() {
     let accepted = ServerMessage::CommandResult {
         result: CommandResult::Accepted {
             command_id: "c1".into(),
             building_id: "7".into(),
+            owner: "a1b2c3d4".into(),
         },
     };
     assert_eq!(
         serde_json::to_string(&accepted).unwrap(),
-        r#"{"type":"command_result","result":{"result":"accepted","command_id":"c1","building_id":"7"}}"#
+        r#"{"type":"command_result","result":{"result":"accepted","command_id":"c1","building_id":"7","owner":"a1b2c3d4"}}"#
     );
 
     let rejected = ServerMessage::CommandResult {

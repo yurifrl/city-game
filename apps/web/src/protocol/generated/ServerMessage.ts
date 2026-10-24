@@ -3,4 +3,4 @@ import type { CommandResult } from "./CommandResult";
 import type { Event } from "./Event";
 import type { WorldDto } from "./WorldDto";
 
-export type ServerMessage = { "type": "hello", actor: string, world: WorldDto, } | { "type": "event", event: Event, } | { "type": "command_result", result: CommandResult, };
+export type ServerMessage = { "type": "hello", you: string, } | { "type": "helloworld", world: WorldDto, } | { "type": "event", event: Event, } | { "type": "command_result", result: CommandResult, };

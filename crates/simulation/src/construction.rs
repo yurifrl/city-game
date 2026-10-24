@@ -12,6 +12,9 @@ pub struct Placement {
     pub revision: u32,
     pub origin: Cell,
     pub rotation: u8,
+    /// Server-resolved owner of the resulting building. The domain never
+    /// derives this from wire data — the world owner stamps it in.
+    pub owner: Option<crate::id::ActorId>,
 }
 
 /// Footprint cells for `width × height` at `origin`; odd rotations swap the
@@ -87,6 +90,7 @@ pub fn apply_placement(
         revision: placement.revision,
         origin: placement.origin,
         rotation: placement.rotation,
+        owner: placement.owner.clone(),
     };
     world.insert_building(building.clone(), cells);
     building
@@ -131,6 +135,7 @@ mod tests {
             revision: 1,
             origin,
             rotation,
+            owner: None,
         }
     }
 
@@ -362,6 +367,7 @@ mod tests {
                 revision: 1,
                 origin: Cell { x: 4, y: 5 },
                 rotation: 1,
+                owner: None,
             }
         );
         assert_eq!(world.building(BuildingId(9)), Some(&building));
