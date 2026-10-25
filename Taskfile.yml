@@ -1,7 +1,7 @@
 version: "3"
 
 vars:
-  PORT: "8080"
+  PORT: "8090"
 
 tasks:
   install:
@@ -14,7 +14,7 @@ tasks:
     desc: Build and run the authoritative server (127.0.0.1:{{.PORT}})
     deps: [dist]
     cmds:
-      - cargo run -p city-server
+      - CITY_BIND=127.0.0.1:{{.PORT}} cargo run -p city-server
 
   web:
     desc: Run the Vite dev server (proxies /api and /ws to the server)
@@ -27,7 +27,7 @@ tasks:
       - bun run --cwd apps/web build
 
   stream:
-    desc: Run the video bridge / seat manager on :8081 (needs the game server up)
+    desc: Run the video bridge / seat manager on :8092 (needs the game server up)
     cmds:
       - bun run --cwd apps/stream start
 
