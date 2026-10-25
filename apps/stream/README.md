@@ -33,10 +33,10 @@ On seat failure the socket receives `{"type":"error","message":…}` and closes.
 ## Run order
 
 1. Game server (crates/server) listening on `CITY_GAME_URL`
-   (default `http://127.0.0.1:8080`).
+   (default `http://127.0.0.1:8090`).
 2. This service: `bun run src/index.ts` — HTTP+WS on `CITY_STREAM_PORT`
-   (default 8081); it boots `CITY_SEATS` warm seats (default 2).
-3. Open `http://127.0.0.1:8081/view` (redirects to a live seat's viewer).
+   (default 8092); it boots `CITY_SEATS` warm seats (default 2).
+3. Open `http://127.0.0.1:8092/view` (redirects to a live seat's viewer).
 
 Without chrome installed, run everything with `CITY_STREAM_FAKE=1`: an
 in-process fake CDP server replaces chrome (tiny JPEG frames, recorded input
@@ -47,8 +47,8 @@ exercisable chrome-free.
 
 | Var                          | Default      | Meaning                          |
 | ---------------------------- | ------------ | -------------------------------- |
-| `CITY_STREAM_PORT`           | `8081`       | listen port                      |
-| `CITY_GAME_URL`              | `:8080`      | upstream game server             |
+| `CITY_STREAM_PORT`           | `8092`       | listen port                      |
+| `CITY_GAME_URL`              | `:8090`      | upstream game server             |
 | `CITY_SEATS`                 | `2`          | warm pool size (janitor-maintained) |
 | `CITY_STREAM_WIDTH/HEIGHT`   | `1280/800`   | seat CSS viewport                |
 | `CITY_STREAM_DPR`            | `1`          | device scale factor              |
