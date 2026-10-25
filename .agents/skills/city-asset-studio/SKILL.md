@@ -43,7 +43,7 @@ trees) follows the same part vocabulary.
      (ceil of max top / 3 m), colors (most common = walls, topmost = roof).
    - The city server validates everything; on rejection it returns the exact
      rule violations — fix and re-publish.
-7. Verify in the city app (`http://localhost:8080/`): the asset appears in the
+7. Verify in the city app (`http://localhost:8090/`): the asset appears in the
    catalogue with an iso icon. Clicking the card selects it for placement
    (then click the grid to place; R rotates, Esc cancels). Editing lives in
    the detail panel — open it via the card's ✎ button or double-click.
