@@ -60,8 +60,8 @@ describe('loadStreamEnv', () => {
   test('defaults are sane', () => {
     const env = loadStreamEnv({});
     expect(env).toEqual({
-      port: 8081,
-      gameUrl: 'http://127.0.0.1:8080',
+      port: 8092,
+      gameUrl: 'http://127.0.0.1:8090',
       seats: 2,
       width: 1280,
       height: 800,
