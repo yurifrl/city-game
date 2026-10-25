@@ -5,8 +5,8 @@
 
 image:
   repository: ghcr.io/yurifrl/city-game
-  tag: latest
-  # :latest moves on every main-branch push; Always keeps pod restarts honest.
+  tag: sha-dd4c0c01171d67b796734471c02177d2289c9e36
+  # Pinned by CI to the image built from the deployed commit (sha-<git sha>).
   pullPolicy: Always
 
 # Public hostnames for the Istio VirtualService. external-dns (istio-
