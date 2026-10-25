@@ -49,8 +49,8 @@ function defaultChromePath(): string {
 export function loadStreamEnv(env: Record<string, string | undefined>): StreamEnv {
   const fakeRaw = env['CITY_STREAM_FAKE']?.trim().toLowerCase();
   return {
-    port: envInt(env, 'CITY_STREAM_PORT', 8081, 1, 65_535),
-    gameUrl: envStr(env, 'CITY_GAME_URL', 'http://127.0.0.1:8080'),
+    port: envInt(env, 'CITY_STREAM_PORT', 8092, 1, 65_535),
+    gameUrl: envStr(env, 'CITY_GAME_URL', 'http://127.0.0.1:8090'),
     seats: envInt(env, 'CITY_SEATS', 2, 0, 64),
     width: envInt(env, 'CITY_STREAM_WIDTH', 1280, 160, 3840),
     height: envInt(env, 'CITY_STREAM_HEIGHT', 800, 120, 2160),

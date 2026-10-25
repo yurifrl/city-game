@@ -2,9 +2,9 @@
 // city-game stream service — entry point.
 //
 // Run order:
-//   1. game server (crates/server) listening on CITY_GAME_URL (default :8080)
-//   2. bun run src/index.ts          → HTTP+WS on CITY_STREAM_PORT (default :8081)
-//   3. open http://127.0.0.1:8081/view (redirects to a live seat)
+//   1. game server (crates/server) listening on CITY_GAME_URL (default :8090)
+//   2. bun run src/index.ts          → HTTP+WS on CITY_STREAM_PORT (default :8092)
+//   3. open http://127.0.0.1:8092/view (redirects to a live seat)
 //
 // CITY_STREAM_FAKE=1 replaces chrome with an in-process fake CDP server —
 // used by tests and for developing without a chrome install.

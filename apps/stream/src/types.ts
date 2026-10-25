@@ -1,9 +1,9 @@
 // apps/stream — server-rendered video bridge (Bun + TypeScript).
 //
 // Run order (see README.md):
-//   1. game server (crates/server) on CITY_GAME_URL (default :8080)
-//   2. this service: bun run src/index.ts  (listens :8081, boots CITY_SEATS warm seats)
-//   3. open http://127.0.0.1:8081/view/{seatId} (seatId from POST /api/seat)
+//   1. game server (crates/server) on CITY_GAME_URL (default :8090)
+//   2. this service: bun run src/index.ts  (listens :8092, boots CITY_SEATS warm seats)
+//   3. open http://127.0.0.1:8092/view/{seatId} (seatId from POST /api/seat)
 //
 // This file duplicates the small stream-facing wire types locally. The stream
 // service never imports from apps/web or crates: downstream it forwards opaque
