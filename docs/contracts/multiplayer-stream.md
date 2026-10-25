@@ -96,7 +96,7 @@ The web client derives its key from the `?seed=` query param when present
 
 ## 4. Seat manager and video bridge (apps/stream)
 
-- Bun + TypeScript service, port 8081. Manages a pool of `CITY_SEATS` (default
+- Bun + TypeScript service, port 8092. Manages a pool of `CITY_SEATS` (default
   2) warm headless Chrome seats, each booting `apps/web/dist` with `SEED`
   until the game socket is up (boot gate).
 - `POST /api/seat` claims a seat, `POST /api/seat/{id}` updates it (viewport,
