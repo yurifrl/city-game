@@ -39,7 +39,7 @@ import type { BackendName } from "./renderer/engine";
 import { createGrid } from "./renderer/grid";
 import { Ghost } from "./renderer/ghost";
 import { PlacementTool } from "./tools/placement";
-import { CommandPalette } from "./ui/palette";
+import { mountCommandPalette } from "./commands";
 import { WorldReplica } from "./world/replica";
 import { showToast } from "./ui/toast";
 import { PresenceBoard } from "./presence/board";
@@ -188,30 +188,6 @@ async function boot(): Promise<void> {
     }
   }
 
-  new CommandPalette([
-    {
-      id: "clear-buildings",
-      label: "Clear buildings",
-      hint: "demolish every building",
-      run: () => {
-        const command: CommandTS = {
-          type: "clear_buildings",
-          command_id: replica.nextCommandId(),
-        };
-        client
-          .send(command)
-          .then((result) => {
-            if (result.result === "cleared_buildings") {
-              showToast(`cleared ${result.removed} building${result.removed === 1 ? "" : "s"}`);
-            } else if (result.result === "rejected") {
-              showToast(result.message, "error");
-            }
-          })
-          .catch((err) => showToast(err instanceof Error ? err.message : String(err), "error"));
-      },
-    },
-  ]);
-
   async function publishRecipe(
     recipe: RecipeTS,
   ): Promise<{ ok: boolean; definition?: AssetDefinitionTS; errors?: string[] }> {
@@ -304,6 +280,8 @@ async function boot(): Promise<void> {
     },
     onStatus: (status) => reflectBackend(backend, STATUS_LABEL[status]),
   });
+
+  mountCommandPalette({ client, replica });
 
   client.connect();
   engine.runRenderLoop(() => scene.render());
