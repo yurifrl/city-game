@@ -7,8 +7,8 @@ name: Build and Deploy Image
 # Each job pushes a per-arch digest; merge() folds them into one manifest.
 #
 # The deploy job then pins chart/values.yaml to the per-commit sha-<sha> tag
-# via an auto-merged PR (same pattern as home-systems billing functions).
-# ArgoCD auto-syncs the chart on every main push, so the bump changes the
+# (direct push to main; repo settings deny PRs from GITHUB_TOKEN). ArgoCD
+# auto-syncs the chart on every main push, so the bump changes the
 # rendered pod spec and rolls the deployment onto the image built here.
 
 on:
@@ -156,7 +156,6 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: write
-      pull-requests: write
     # Serialize bumps so a rapid second push rebases cleanly on the first.
     concurrency:
       group: deploy-city-game
@@ -184,25 +183,19 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Open and merge image-tag bump PR
+      # Direct push, not a PR: this repo's settings deny PRs from GITHUB_TOKEN
+      # ("Actions is not permitted to create or approve pull requests"), and
+      # main is unprotected. Commit body carries [skip ci] so the bump does
+      # not retrigger this workflow and loop.
+      - name: Push image-tag bump to main
         if: steps.pin.outputs.changed == 'true'
         run: |
           set -euo pipefail
           tag="sha-${GITHUB_SHA}"
-          branch="ci/pin-image-${GITHUB_SHA}"
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -b "${branch}"
-          git commit -am "ci(deploy): pin image to ${tag} [skip ci]"
-          git push origin "${branch}"
-          gh pr create --base main --head "${branch}" \
-            --title "ci(deploy): pin image to ${tag}" \
-            --body "Automated content-addressed deploy bump (built from ${GITHUB_SHA}). ArgoCD syncs this and rolls the deployment."
-          # --subject/--body pin the squash commit message so [skip ci] lands
-          # in it regardless of repo merge settings; otherwise the bump commit
-          # would retrigger this workflow and loop.
-          gh pr merge "${branch}" --squash --delete-branch \
-            --subject "ci(deploy): pin image to ${tag} [skip ci]" \
-            --body "Built from ${GITHUB_SHA}. [skip ci]"
-        env:
-          GH_TOKEN: ${{ github.token }}
+          git commit -am "ci(deploy): pin image to ${tag}
+
+          Built from ${GITHUB_SHA}. [skip ci]"
+          git pull --rebase origin main
+          git push origin "HEAD:main"
