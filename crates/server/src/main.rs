@@ -13,8 +13,9 @@ use std::path::Path;
 
 use city_simulation::{AssetCatalogue, WorldState};
 
-/// Contract binding (docs/contracts/multiplayer-stream.md). `CITY_BIND` exists only
-/// so local smoke tests can avoid a port taken by an unrelated service.
+/// Contract binding (docs/contracts/multiplayer-stream.md). `CITY_BIND` and
+/// `CITY_DB` exist only so local smoke tests can avoid a port taken by an
+/// unrelated service and keep the world database hermetic.
 const BIND_ADDR: &str = "127.0.0.1:8080";
 const DB_PATH: &str = "./data/city.db";
 const DIST_DIR: &str = "./apps/web/dist";
@@ -43,7 +44,8 @@ async fn run() -> Result<(), String> {
     }
 
     // Boot: open store → seed on empty DB → load tables → from_save → serve.
-    let store = persistence::Store::open(Path::new(DB_PATH))?;
+    let db_path = std::env::var("CITY_DB").unwrap_or_else(|_| DB_PATH.to_owned());
+    let store = persistence::Store::open(Path::new(&db_path))?;
     if store.is_empty()? {
         eprintln!("city-server: empty database; seeding 3 stock definitions");
         store.seed()?;

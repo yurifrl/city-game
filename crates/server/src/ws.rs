@@ -75,7 +75,16 @@ pub(crate) async fn run_connection(app: App, mut socket: WebSocket) {
         };
         match step {
             Step::Gone => break,
-            Step::Outbound(_message) => continue,
+            Step::Outbound(message) => {
+                // Hub mailboxes carry JSON-ready `ServerMessage`s; serialization
+                // is infallible (all fields are wire types), a send failure
+                // means the socket is dead and ends the session.
+                let text = serde_json::to_string(&message)
+                    .expect("ServerMessage serialization cannot fail");
+                if socket.send(Message::Text(text.into())).await.is_err() {
+                    break;
+                }
+            }
             Step::Inbound(message) => match message {
                 Message::Text(text) => {
                     handle_text(&app, &out_tx, conn, &actor, &text).await;

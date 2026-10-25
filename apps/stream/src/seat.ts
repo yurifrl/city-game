@@ -209,6 +209,8 @@ export class Seat {
   fakeCdp?: FakeCdp;
   private seq = 0;
   private lastButtons = 0;
+  /** Per-seat identity UUID claimed from the game server (contract §1). */
+  private seed: string | null = null;
 
   constructor(id: string, env: StreamEnv) {
     this.id = id;
@@ -274,7 +276,11 @@ export class Seat {
       if (this.env.fake) {
         // The fake tab has no URL concept; nothing to navigate.
       } else {
-        await cdp.send('Page.navigate', { url: this.env.gameUrl });
+        await this.claimSeed();
+        // Contract identity (§1): each seat carries its per-seat UUID in the
+        // `?seed=` query; the client sends it as `identify.key`, so actor
+        // identity and label resolve server-side and survive reconnects.
+        await cdp.send('Page.navigate', { url: this.seedUrl() });
       }
 
       await waitFor(() => this.lastFrame !== null, this.env.bootTimeoutMs, `seat ${this.id} first frame`);
@@ -291,6 +297,42 @@ export class Seat {
       }
       await this.stop();
       throw err instanceof Error ? err : new Error(String(err));
+    }
+  }
+
+  /** Game URL with this seat's identity seed (contract §1 identity). */
+  private seedUrl(): string {
+    return this.seed === null
+      ? this.env.gameUrl
+      : (() => {
+          const url = new URL(this.env.gameUrl);
+          url.searchParams.set('seed', this.seed);
+          return url.toString();
+        })();
+  }
+
+  /**
+   * Claims the seat's identity UUID from the game server's `/api/seed`
+   * (contract §1: one per browser seat). Falls back to the seat id so boots
+   * still succeed (plain-dev identity) while the game server is unreachable.
+   */
+  private async claimSeed(): Promise<void> {
+    try {
+      const res = await fetch(new URL('/api/seed', `${this.env.gameUrl}/`), {
+        signal: AbortSignal.timeout(3_000),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body: unknown = await res.json();
+      if (
+        typeof body !== 'object' || body === null ||
+        !('seed' in body) || typeof body.seed !== 'string' || body.seed.length === 0
+      ) {
+        throw new Error('response missing seed');
+      }
+      this.seed = body.seed;
+    } catch (err) {
+      console.warn(`[seat ${this.id}] seed claim failed (${err instanceof Error ? err.message : err}); using seat id as identity key`);
+      this.seed = `seat-${this.id}`;
     }
   }
 

@@ -2,6 +2,8 @@
 
 Status: chosen starting architecture and explicit design targets; no implementation or benchmark yet. [Genesis](../GENESIS.md) defines intent, [research](research.md) supplies evidence, and the current M2 contract orders implementation.
 
+For the M2 multiplayer slice as actually built, see [§10 Multiplayer walkthrough (M2)](#10-multiplayer-walkthrough-m2).
+
 ## 1. Stack decision
 
 | Responsibility | Choice | Reason / boundary |
@@ -264,3 +266,58 @@ Recorded at integration of milestone 1 ("author a building and place it"); revis
 - **Asset publish flows through the single-writer command queue** because id allocation and the one rusqlite connection are owned by the world runner.
 - **Definition revision is constant 1 in M1** (definitions immutable; placements with another revision are rejected); schema gains a revision column when revisions become real.
 - **Known cosmetic follow-up fixed at integration:** ESC now clears the catalogue card's armed highlight via `onDisarm` (previously the tool disarmed but the highlight persisted).
+
+## 10. Multiplayer walkthrough (M2)
+
+This section records the shipped multiplayer slice: what exists, where it lives, and how one placement travels through the stack end to end. It is a walkthrough of the current code, not a claim beyond it.
+
+### 10.1 What shipped
+
+| Layer | Location | Responsibility |
+|---|---|---|
+| Protocol | `crates/protocol/src/lib.rs` (+ `tests/wire.rs`) | Wire DTOs (`ClientMessage`, `ServerMessage`, `CommandResult`, presence), shared Rust ↔ TypeScript; tests pin byte shapes |
+| Simulation | `crates/simulation/src/` | World state, placement/demolition rules, footprint/occupancy invariants; no network, no I/O |
+| Server | `crates/server/src/` (`main.rs`, `http.rs`, `ws.rs`, `hub.rs`, `runner.rs`, `adapter.rs`, `persistence.rs`) | HTTP surface (`/`, `/api/seed`, `/api/assets`, `/ws`), per-connection tasks, hub fanout, single-writer world runner, SQLite |
+| Web client | `apps/web/src/` (`main.ts`, `connection/client.ts`, `world/replica.ts`, `renderer/`, `tools/placement.ts`) | WS transport with identify + receipts, read-only replica, Babylon renderer, placement tool |
+| Stream service | `apps/stream/src/` (`pool.ts`, `seat.ts`, `service.ts`, `cdp.ts`, `jpeg.ts`) | Headless-Chrome seat pool, CDP screencast → JPEG frames, viewer WS relay with input |
+| E2E | `apps/stream/test/e2e.test.ts` + helpers | Real-chrome two-viewer scenario asserting the game wire, SQLite, and screenshots |
+
+### 10.2 One placement end to end
+
+```mermaid
+sequenceDiagram
+  participant V as Viewer WS (seat A controller)
+  participant S as stream service
+  participant C as seat A page (Babylon)
+  participant G as game server /ws
+  participant R as world runner (single writer)
+  participant J as judge (observer WS)
+  participant D as SQLite
+  V->>S: {type:"input", x, y, buttons, down}
+  S->>C: Input.dispatchMouseEvent (mouseMoved)
+  C->>C: scene.pick → cellFromPoint
+  C->>G: {type:"command", place_building, command_id}
+  G->>R: WorldRequest::Command (arrival order)
+  R->>R: receipt lookup → validate footprint → apply
+  R->>D: one transaction (state + receipt)
+  R->>G: broadcast building_placed; direct command_result
+  G->>J: event building_placed (owner = actor)
+  G->>C: result accepted → ghost becomes real
+```
+
+Key points in this path:
+
+- **Identity**: the seat page's actor key comes from `?seed=` on the viewer URL; the runner resolves the actor from the connection, never from the client payload. The demolish probe in the e2e connects raw with its own key.
+- **Presence**: cursor/drag inputs are fire-on-change state (actor, cell, kind `idle`/`drag`, optional `def_id`), broadcast by the runner and rendered by other seats as remote cursors and ghosts. They are never persisted or receipted; the ticker sweeps expired presences after `presence_secs` of silence.
+- **Commands**: bounded queue in arrival order → receipt lookup → validate → apply → one SQLite transaction → only then broadcast. A replayed `command_id` returns the stored accepted outcome (asserted in e2e by counting two results for the same id).
+- **Rendering**: each seat's page renders its local ghost plus every remote presence; ownership labels come from `building.owner`.
+
+### 10.3 Evidence
+
+`task test` runs `cargo test --workspace` (protocol/simulation/server) and `bun test --cwd apps/stream` (unit, happy-path, real-chrome boot, and the multiplayer e2e — 31 tests, 103 assertions). The e2e boots a real city-server on a temp SQLite database and two real Chrome seats, then asserts:
+
+1. Two WS viewers claim two distinct seats as controllers; the game wire (read by a raw observer connection, never the stream socket) carries their cursor presence per swept cell.
+2. Seat B's screencast shows A's cursor (`shots/30-cursor-of-A-visible-on-B.png`), A's armed drag ghost (`40-drag-ghost-of-A-on-B.png`), and the placed building with ownership (`50-building-placed-from-A-seen-on-B.png`).
+3. The placed building persists with the placing actor in SQLite, is demolished via a raw second connection, and the replayed command id replays the stored receipt instead of double-demolishing (row count back to 0).
+
+Run it with real Chrome present: `bun test --cwd apps/stream test/e2e.test.ts` (skips when no Chrome is found).
