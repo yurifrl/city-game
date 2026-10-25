@@ -1,6 +1,6 @@
 //! City server: authoritative world owner, HTTP API, WebSocket replication.
 //! Contract: docs/contracts/multiplayer-stream.md. Run from the repo root:
-//! binds 127.0.0.1:8080, persists ./data/city.db, serves ./apps/web/dist.
+//! binds 127.0.0.1:8090, persists ./data/city.db, serves ./apps/web/dist.
 
 mod adapter;
 mod http;
@@ -16,7 +16,7 @@ use city_simulation::{AssetCatalogue, WorldState};
 /// Contract binding (docs/contracts/multiplayer-stream.md). `CITY_BIND` and
 /// `CITY_DB` exist only so local smoke tests can avoid a port taken by an
 /// unrelated service and keep the world database hermetic.
-const BIND_ADDR: &str = "127.0.0.1:8080";
+const BIND_ADDR: &str = "127.0.0.1:8090";
 const DB_PATH: &str = "./data/city.db";
 const DIST_DIR: &str = "./apps/web/dist";
 const PRESENCE_TTL_SECS: u64 = 30;
