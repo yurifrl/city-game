@@ -101,6 +101,15 @@ pub fn apply_demolition(world: &mut WorldState, id: BuildingId) -> Result<Buildi
     world.remove_building(id).ok_or(Reject::UnknownBuilding(id))
 }
 
+/// Removes every building (ascending id order, so the result is
+/// deterministic) and frees all their cells. Returns the removed buildings.
+pub fn apply_clear(world: &mut WorldState) -> Vec<Building> {
+    let ids: Vec<BuildingId> = world.buildings().map(|building| building.id).collect();
+    ids.into_iter()
+        .filter_map(|id| world.remove_building(id))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

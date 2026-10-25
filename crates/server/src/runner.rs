@@ -416,6 +416,9 @@ fn execute_command(
             &building_id,
             &canonical,
         ),
+        wire::Command::ClearBuildings { command_id } => {
+            clear_buildings(world, store, &actor, &command_id, &canonical)
+        }
     };
 
     Emissions {
@@ -558,6 +561,41 @@ fn demolish_building(
 
     let event = adapter::event_message(wire::Event::BuildingDemolished {
         building_id: adapter::wire_id(id.0),
+        actor: adapter::actor_id(actor),
+    });
+    (outcome, vec![event])
+}
+
+/// Lifecycle for `clear_buildings`: receipt replay/conflict check, bulk
+/// remove (domain op), one SQLite transaction, then the event broadcast.
+/// Removing zero buildings is a legal, receipted outcome.
+fn clear_buildings(
+    world: &mut WorldState,
+    store: &Store,
+    actor: &ActorId,
+    command_id: &str,
+    canonical: &str,
+) -> (wire::CommandResult, Vec<wire::ServerMessage>) {
+    let removed_list = city_simulation::construction::apply_clear(world);
+    let removed = removed_list.len() as u64;
+
+    let outcome = wire::CommandResult::ClearedBuildings {
+        command_id: command_id.to_owned(),
+        removed,
+    };
+    if let Err(err) = store.commit_clear(command_id, canonical, &outcome) {
+        eprintln!("runner: commit_clear failed for {command_id:?}: {err}");
+        let (resynced_world, _resynced_catalogue) = resync_from_disk(store);
+        *world = resynced_world;
+        let outcome = adapter::bad_request(
+            command_id,
+            "persistence failed; world resynchronized from database",
+        );
+        return (outcome, Vec::new());
+    }
+
+    let event = adapter::event_message(wire::Event::BuildingsCleared {
+        removed,
         actor: adapter::actor_id(actor),
     });
     (outcome, vec![event])
@@ -755,6 +793,12 @@ pub(crate) mod tests_support {
         wire::Command::DemolishBuilding {
             command_id: command_id.to_owned(),
             building_id: building_id.to_owned(),
+        }
+    }
+
+    pub(crate) fn clear(command_id: &str) -> wire::Command {
+        wire::Command::ClearBuildings {
+            command_id: command_id.to_owned(),
         }
     }
 
@@ -1019,6 +1063,59 @@ mod tests {
                 assert_eq!(code, wire::RejectCode::UnknownBuilding);
             }
             other => panic!("expected rejection, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn clear_buildings_broadcasts_count_and_replays_receipt() {
+        let (mut harness, _dir) = test_world().await;
+        harness.send_command(place("c1", "1", 10, 12)).await;
+        let _ = harness.next_event().await;
+        let _ = harness.next_result().await;
+        harness.send_command(place("c2", "1", 20, 12)).await;
+        let _ = harness.next_event().await;
+        let _ = harness.next_result().await;
+
+        harness.send_command(clear("x1")).await;
+        match harness.next_event().await {
+            wire::Event::BuildingsCleared { removed, actor } => {
+                assert_eq!(removed, 2);
+                assert_eq!(actor, DEFAULT_ACTOR);
+            }
+            other => panic!("expected buildings_cleared, got {other:?}"),
+        }
+        match harness.next_result().await {
+            wire::CommandResult::ClearedBuildings { command_id, removed } => {
+                assert_eq!(command_id, "x1");
+                assert_eq!(removed, 2);
+            }
+            other => panic!("expected cleared_buildings result, got {other:?}"),
+        }
+        assert!(harness.snapshot().await.buildings.is_empty());
+
+        // Replaying the command id returns the stored receipt — the SAME
+        // removed count — and broadcasts nothing.
+        harness.send_command(clear("x1")).await;
+        match harness.next_result().await {
+            wire::CommandResult::ClearedBuildings { command_id, removed } => {
+                assert_eq!(command_id, "x1");
+                assert_eq!(removed, 2, "receipt replays the first outcome");
+            }
+            other => panic!("expected replayed result, got {other:?}"),
+        }
+        assert!(harness.snapshot().await.buildings.is_empty());
+
+        // Clearing an already-empty board is a legal zero outcome.
+        harness.send_command(clear("x2")).await;
+        match harness.next_event().await {
+            wire::Event::BuildingsCleared { removed: 0, actor } => {
+                assert_eq!(actor, DEFAULT_ACTOR);
+            }
+            other => panic!("expected zero-count buildings_cleared, got {other:?}"),
+        }
+        match harness.next_result().await {
+            wire::CommandResult::ClearedBuildings { removed: 0, .. } => {}
+            other => panic!("expected zero-count result, got {other:?}"),
         }
     }
 

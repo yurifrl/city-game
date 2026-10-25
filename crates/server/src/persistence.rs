@@ -411,6 +411,25 @@ impl Store {
         Ok(())
     }
 
+    /// One transaction: every building row removal + receipt.
+    pub(crate) fn commit_clear(
+        &self,
+        command_id: &str,
+        payload: &str,
+        outcome: &city_protocol::CommandResult,
+    ) -> Result<(), String> {
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|err| format!("cannot begin transaction: {err}"))?;
+        tx.execute("DELETE FROM buildings", [])
+            .map_err(|err| format!("cannot clear buildings: {err}"))?;
+        Self::insert_receipt(&tx, command_id, payload, outcome)?;
+        tx.commit()
+            .map_err(|err| format!("cannot commit clear: {err}"))?;
+        Ok(())
+    }
+
     /// One transaction: asset row + meta counter.
     pub(crate) fn commit_asset(
         &self,

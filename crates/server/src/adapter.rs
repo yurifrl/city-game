@@ -126,6 +126,7 @@ pub(crate) fn command_id(command: &wire::Command) -> &str {
     match command {
         wire::Command::PlaceBuilding { command_id, .. } => command_id,
         wire::Command::DemolishBuilding { command_id, .. } => command_id,
+        wire::Command::ClearBuildings { command_id } => command_id,
     }
 }
 

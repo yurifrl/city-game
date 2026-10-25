@@ -18,6 +18,8 @@ export const GRID_HEIGHT = 96;
 export interface ReplicaDiff {
   placed?: BuildingTS;
   removed?: BuildingTS;
+  /** Every building that went away (clear_buildings). */
+  cleared?: BuildingTS[];
   published?: AssetDefinitionTS;
   removedDef?: string;
 }
@@ -88,6 +90,12 @@ export class WorldReplica {
           }
         }
         return { removed: building };
+      }
+      case "buildings_cleared": {
+        const removed = this.buildings();
+        this.buildingsById.clear();
+        this.cells.clear();
+        return { cleared: removed };
       }
       case "definition_published":
         this.defs.set(event.definition.id, event.definition);

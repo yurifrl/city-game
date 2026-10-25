@@ -145,6 +145,9 @@ pub enum Command {
         command_id: String,
         building_id: WireId,
     },
+    ClearBuildings {
+        command_id: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -189,6 +192,9 @@ pub enum InputKind {
 pub enum Event {
     BuildingPlaced { building: BuildingDto },
     BuildingDemolished { building_id: WireId, actor: ActorId },
+    /// `removed` counts the buildings that actually went away; zero is a
+    /// legal outcome (the board was already empty).
+    BuildingsCleared { removed: u64, actor: ActorId },
     DefinitionPublished { definition: AssetDefinition },
     DefinitionRemoved { def_id: WireId },
     /// Broadcast whenever an actor's presence state changes (move cell,
@@ -235,6 +241,12 @@ pub enum CommandResult {
         building_id: WireId,
         /// Server-resolved owner actor for the newly placed building.
         owner: ActorId,
+    },
+    /// Outcome of `clear_buildings`: `removed` is part of the receipt, so a
+    /// replayed command returns exactly what the first application removed.
+    ClearedBuildings {
+        command_id: String,
+        removed: u64,
     },
     Rejected {
         command_id: String,

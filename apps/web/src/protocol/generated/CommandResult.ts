@@ -5,4 +5,4 @@ export type CommandResult = { "result": "accepted", command_id: string, building
 /**
  * Server-resolved owner actor for the newly placed building.
  */
-owner: string, } | { "result": "rejected", command_id: string, code: RejectCode, message: string, conflicting_building_id: string | null, };
+owner: string, } | { "result": "cleared_buildings", command_id: string, removed: bigint, } | { "result": "rejected", command_id: string, code: RejectCode, message: string, conflicting_building_id: string | null, };

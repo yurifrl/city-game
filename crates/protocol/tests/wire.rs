@@ -69,6 +69,16 @@ fn command_frames_match_contract_json() {
         serde_json::to_string(&demolish).unwrap(),
         r#"{"type":"command","command":{"type":"demolish_building","command_id":"c2","building_id":"7"}}"#
     );
+
+    let clear = ClientMessage::Command {
+        command: Command::ClearBuildings {
+            command_id: "c3".into(),
+        },
+    };
+    assert_eq!(
+        serde_json::to_string(&clear).unwrap(),
+        r#"{"type":"command","command":{"type":"clear_buildings","command_id":"c3"}}"#
+    );
 }
 
 #[test]
@@ -236,6 +246,16 @@ fn event_frames_match_contract_shapes() {
         .unwrap(),
         r#"{"type":"event","event":{"type":"building_demolished","building_id":"7","actor":"a1b2c3d4"}}"#
     );
+    assert_eq!(
+        serde_json::to_string(&ServerMessage::Event {
+            event: Event::BuildingsCleared {
+                removed: 3,
+                actor: "a1b2c3d4".into(),
+            }
+        })
+        .unwrap(),
+        r#"{"type":"event","event":{"type":"buildings_cleared","removed":3,"actor":"a1b2c3d4"}}"#
+    );
 
     let published = ServerMessage::Event {
         event: Event::DefinitionPublished {
@@ -354,6 +374,17 @@ fn command_result_frames_match_contract_shapes() {
     assert_eq!(
         serde_json::to_string(&accepted).unwrap(),
         r#"{"type":"command_result","result":{"result":"accepted","command_id":"c1","building_id":"7","owner":"a1b2c3d4"}}"#
+    );
+
+    let cleared = ServerMessage::CommandResult {
+        result: CommandResult::ClearedBuildings {
+            command_id: "c3".into(),
+            removed: 3,
+        },
+    };
+    assert_eq!(
+        serde_json::to_string(&cleared).unwrap(),
+        r#"{"type":"command_result","result":{"result":"cleared_buildings","command_id":"c3","removed":3}}"#
     );
 
     let rejected = ServerMessage::CommandResult {

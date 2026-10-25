@@ -95,7 +95,8 @@ export type CommandTS =
       type: "demolish_building";
       command_id: string;
       building_id: string;
-    };
+    }
+  | { type: "clear_buildings"; command_id: string };
 
 /** client → server envelope; identify must be the first message per connection. */
 export type ClientMessageTS =
@@ -114,6 +115,7 @@ export interface InputMessageTS {
 export type EventTS =
   | { type: "building_placed"; building: BuildingTS }
   | { type: "building_demolished"; building_id: string; actor: string }
+  | { type: "buildings_cleared"; removed: number; actor: string }
   | { type: "definition_published"; definition: AssetDefinitionTS }
   | { type: "definition_removed"; def_id: string }
   | { type: "player_joined"; actor: string; label: string }
@@ -137,6 +139,11 @@ export type CommandResultTS =
       command_id: string;
       building_id: string;
       owner: string;
+    }
+  | {
+      result: "cleared_buildings";
+      command_id: string;
+      removed: number;
     }
   | {
       result: "rejected";

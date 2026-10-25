@@ -3,4 +3,4 @@ import type { AssetDefinition } from "./AssetDefinition";
 import type { BuildingDto } from "./BuildingDto";
 import type { PresenceState } from "./PresenceState";
 
-export type Event = { "type": "building_placed", building: BuildingDto, } | { "type": "building_demolished", building_id: string, actor: string, } | { "type": "definition_published", definition: AssetDefinition, } | { "type": "definition_removed", def_id: string, } | { "type": "presence", presence: PresenceState, } | { "type": "player_joined", actor: string, label: string, } | { "type": "player_left", actor: string, };
+export type Event = { "type": "building_placed", building: BuildingDto, } | { "type": "building_demolished", building_id: string, actor: string, } | { "type": "buildings_cleared", removed: bigint, actor: string, } | { "type": "definition_published", definition: AssetDefinition, } | { "type": "definition_removed", def_id: string, } | { "type": "presence", presence: PresenceState, } | { "type": "player_joined", actor: string, label: string, } | { "type": "player_left", actor: string, };

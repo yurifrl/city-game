@@ -39,6 +39,7 @@ import type { BackendName } from "./renderer/engine";
 import { createGrid } from "./renderer/grid";
 import { Ghost } from "./renderer/ghost";
 import { PlacementTool } from "./tools/placement";
+import { CommandPalette } from "./ui/palette";
 import { WorldReplica } from "./world/replica";
 import { showToast } from "./ui/toast";
 import { PresenceBoard } from "./presence/board";
@@ -181,11 +182,35 @@ async function boot(): Promise<void> {
     try {
       const result = await client.send(command);
       if (result.result === "accepted") inspector.clear();
-      else showToast(result.message, "error");
+      else if (result.result === "rejected") showToast(result.message, "error");
     } catch (err) {
       showToast(err instanceof Error ? err.message : String(err), "error");
     }
   }
+
+  new CommandPalette([
+    {
+      id: "clear-buildings",
+      label: "Clear buildings",
+      hint: "demolish every building",
+      run: () => {
+        const command: CommandTS = {
+          type: "clear_buildings",
+          command_id: replica.nextCommandId(),
+        };
+        client
+          .send(command)
+          .then((result) => {
+            if (result.result === "cleared_buildings") {
+              showToast(`cleared ${result.removed} building${result.removed === 1 ? "" : "s"}`);
+            } else if (result.result === "rejected") {
+              showToast(result.message, "error");
+            }
+          })
+          .catch((err) => showToast(err instanceof Error ? err.message : String(err), "error"));
+      },
+    },
+  ]);
 
   async function publishRecipe(
     recipe: RecipeTS,
@@ -275,6 +300,7 @@ async function boot(): Promise<void> {
       }
       if (diff.placed) refreshInstances(keyOf(diff.placed));
       if (diff.removed) refreshInstances(keyOf(diff.removed));
+      for (const cleared of diff.cleared ?? []) refreshInstances(keyOf(cleared));
     },
     onStatus: (status) => reflectBackend(backend, STATUS_LABEL[status]),
   });
