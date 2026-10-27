@@ -1,9 +1,13 @@
-# City game — single image, two modes.
+# City game — single image, three modes.
 #
 # The browser talks to the backend directly (same-origin /api + /ws), so the
-# production topology is the DEFAULT mode: city-server serving the static web
-# build, the HTTP API, and the WebSocket on one port. MODE=web runs busybox
-# httpd serving only the static build (standalone static hosting).
+# direct-client topology is the DEFAULT mode: city-server serving the static
+# web build, the HTTP API, and the WebSocket on one port. MODE=web runs
+# busybox httpd serving only the static build (standalone static hosting).
+# MODE=stream runs the video bridge (apps/stream): warm headless Chromium
+# seats render the game server-side and pixel-only viewers watch/play through
+# them. It expects to run beside a DEFAULT-mode container in the same pod and
+# reaches it at CITY_GAME_URL (default http://127.0.0.1:8080).
 #
 # ---- Web client build ---------------------------------------------------------
 FROM oven/bun:1-alpine AS web-build
@@ -40,18 +44,28 @@ RUN cargo install --locked --path crates/server --root /out
 # runtime recreates that layout: dist under /app/apps/web/dist, SQLite state
 # on the mounted volume via /app/data -> /data.
 FROM alpine:3.22 AS runtime
+# Chromium + Noto fonts serve MODE=stream seats; bun runs the stream bridge.
+# Non-essential locale/l10n deps are skipped explicitly to keep the layer small.
 RUN addgroup -g 65532 -S app \
  && adduser -u 65532 -S -G app app \
  && mkdir -p /data /app \
  && ln -s /data /app/data \
- && chown -R app:app /data /app
+ && chown -R app:app /data /app \
+ && apk add --no-cache chromium font-noto
 COPY --from=builder /out/bin/city-server /usr/local/bin/city-server
 COPY --from=web-build /src/dist /app/apps/web/dist
+COPY --from=oven/bun:1-alpine /usr/local/bin/bun /usr/local/bin/bun
+# The bridge has no runtime dependencies (Bun standard library only); sources
+# run directly under bun with no install step.
+COPY apps/stream/ /app/apps/stream/
 
 ENV CITY_BIND=0.0.0.0:8080
+ENV CITY_STREAM_CHROME=/usr/bin/chromium-browser
 EXPOSE 8080
+EXPOSE 8092
 USER 65532:65532
 WORKDIR /app
 
-# MODE=web: serve only the static build; default: full game server.
-CMD ["sh", "-c", "if [ \"$MODE\" = \"web\" ]; then exec busybox httpd -f -p 0.0.0.0:8080 -h /app/apps/web/dist; else exec city-server; fi"]
+# MODE=web: serve only the static build; MODE=stream: the video bridge;
+# default: full game server.
+CMD ["sh", "-c", "if [ \"$MODE\" = \"web\" ]; then exec busybox httpd -f -p 0.0.0.0:8080 -h /app/apps/web/dist; elif [ \"$MODE\" = \"stream\" ]; then exec bun /app/apps/stream/src/index.ts; else exec city-server; fi"]

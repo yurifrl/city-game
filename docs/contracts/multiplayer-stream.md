@@ -108,11 +108,28 @@ The web client derives its key from the `?seed=` query param when present
 
 ## 5. Consolidation (m2-consolidate)
 
-Everything not serving the above is deleted: `apps/site`, `chart/`,
-`Dockerfile`, `.dockerignore`, `.github/`, `poc/` (after evidence extraction),
-old `.agents/plans/` M1 plans, `docs/contracts/milestone-1.md`. `Taskfile.yml`
-drops `site`/`docker` targets and gains `stream`. `.gitignore` keeps `shots/`.
-`README.md` is a stub pointing to `docs/`.
+Everything not serving the above is deleted: `apps/site`, `poc/` (after
+evidence extraction), old `.agents/plans/` M1 plans,
+`docs/contracts/milestone-1.md`. `Taskfile.yml` drops `site`/`docker` targets
+and gains `stream`. `.gitignore` keeps `shots/`. `README.md` is a stub
+pointing to `docs/`.
+
+## 5b. Production topology (city-game.syscd.live)
+
+One image, three modes (`Dockerfile`): default = `city-server` (static build
++ `/api` + `/ws` on :8080), `MODE=web` = busybox static hosting, `MODE=stream`
+= the seat bridge on :8092 beside Alpine's `chromium-browser` (SwiftShader
+rendering, `--no-sandbox` under the non-root uid). CI (`build.yml`) builds
+amd64+arm64 images per commit, pins `chart/values.yaml` to `sha-<git sha>`,
+and ArgoCD syncs `chart/`.
+
+The chart runs one pod with both containers: `city-game` (authoritative
+world, SQLite on longhorn) and `stream` (`CITY_GAME_URL=http://127.0.0.1:8080`,
+`CITY_SEATS=2`). Istio routes the public host `city-game.syscd.live` to the
+bridge service (viewer at `/view`), so the public experience is the streaming
+viewer; the direct client stays on the tailnet host `city-game.syscd.tech`.
+Cloudflare Access fronts the `.live` name; `syscd.tech` rides MagicDNS
+without Access.
 
 ## 6. Verification (m2-verify)
 

@@ -1,7 +1,12 @@
 # ── city-game chart values ─────────────────────────────────────────────────
-# The browser is the API client: the server image serves the static web
-# build plus same-origin /api + /ws on one port, so there is exactly one
-# deployment and one service.
+# Two topologies share one pod image:
+#   - The direct client: city-server serves the static web build plus
+#     same-origin /api + /ws on one port (default image mode).
+#   - The streaming viewer: a bridge container (MODE=stream) in the same pod
+#     spawns warm headless Chromium seats that render the game server-side;
+#     pixel-only viewers watch and play through it (city-game-stream service).
+# The public host (viewerHosts) routes to the streaming viewer; the direct
+# client stays reachable on the tailnet host (hosts).
 
 image:
   repository: ghcr.io/yurifrl/city-game
@@ -9,14 +14,19 @@ image:
   # Pinned by CI to the image built from the deployed commit (sha-<git sha>).
   pullPolicy: Always
 
-# Public hostnames for the Istio VirtualService. external-dns (istio-
+# Direct-client hostnames for the Istio VirtualService. external-dns (istio-
 # virtualservice source, domain filter syscd.live, proxied) turns the .live
 # name into a proxied Cloudflare record. The gateway's tailscale annotation
 # publishes syscd.tech hostnames to MagicDNS (*.syscd.tech -> 192.168.68.201),
 # giving a tailnet route that is NOT behind Cloudflare Access.
 hosts:
-  - city-game.syscd.live
   - city-game.syscd.tech
+
+# Streaming-viewer hostnames (the video stream experience): viewer pages,
+# seat API, and seat WebSockets route to the bridge; the root serves the
+# viewer. The .live name is a proxied Cloudflare record behind Access.
+viewerHosts:
+  - city-game.syscd.live
 
 # SQLite world state (./data/city.db via /app/data -> /data).
 storage:
@@ -30,3 +40,16 @@ resources:
   limits:
     cpu: "1"
     memory: 512Mi
+
+# Video bridge + seats. Seats render with SwiftShader (software WebGL/WebGPU —
+# the cluster has no GPU), so the bridge container is CPU/memory heavy
+# on purpose.
+stream:
+  seats: 2
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 2Gi

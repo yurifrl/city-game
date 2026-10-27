@@ -58,6 +58,8 @@ const DEVTOOLS_LINE = /\bDevTools listening on (ws:\/\/\S+)/;
  * process crash loop.
  */
 export function chromeArgs(env: StreamEnv, profileDir: string): string[] {
+  const darwin = process.platform === 'darwin';
+  const linux = process.platform === 'linux';
   return [
     '--headless=new',
     '--remote-debugging-port=0',
@@ -68,7 +70,13 @@ export function chromeArgs(env: StreamEnv, profileDir: string): string[] {
     '--disable-renderer-backgrounding',
     '--disable-backgrounding-occluded-windows',
     '--enable-unsafe-webgpu',
-    '--use-angle=metal', // darwin/arm64 host
+    // ANGLE backend follows the host: Metal on darwin/arm64; in containers
+    // there is no GPU and no Metal, so rendering goes through SwiftShader
+    // (which Chrome ≥132 requires an explicit opt-in for).
+    `--use-angle=${darwin ? 'metal' : 'swiftshader'}`,
+    ...(linux
+      ? ['--enable-unsafe-swiftshader', '--no-sandbox', '--disable-dev-shm-usage']
+      : []),
     '--mute-audio',
     '--hide-scrollbars',
     `--window-size=${env.width},${env.height}`,

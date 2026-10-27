@@ -1,7 +1,14 @@
 {{/*
-One deployment + one service + one VirtualService. The server image serves
-static, API, and WS on :8080; the browser connects same-origin, so no
-second front-end component exists.
+One pod, two serving modes, three front ends.
+
+- The server container (default image mode) serves the static web build plus
+  same-origin /api + /ws on :8080 — the direct client, reached via the
+  city-game service (tailnet hosts).
+- The stream container (MODE=stream) is the video bridge: warm headless
+  Chromium seats render the game server-side; pixel-only viewers watch and
+  play through the city-game-stream service (public .live host). It shares
+  the pod's localhost with the server (CITY_GAME_URL=http://127.0.0.1:8080),
+  so viewer traffic never leaves the node.
 */}}
 apiVersion: apps/v1
 kind: Deployment
@@ -56,6 +63,41 @@ spec:
               mountPath: /data
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+        - name: stream
+          image: {{ printf "%s:%s" .Values.image.repository .Values.image.tag | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: MODE
+              value: stream
+            # Same pod → the game server is reachable on loopback.
+            - name: CITY_GAME_URL
+              value: http://127.0.0.1:8080
+            - name: CITY_SEATS
+              value: {{ .Values.stream.seats | quote }}
+            - name: CITY_STREAM_CHROME
+              value: /usr/bin/chromium-browser
+          ports:
+            - name: stream
+              containerPort: 8092
+              protocol: TCP
+          # /api/status.json exists once the service listens; a seat pool
+          # still warming stays "ready" and the viewer redirects work — only
+          # a dead bridge should drop out of the endpoints.
+          livenessProbe:
+            httpGet:
+              path: /api/status.json
+              port: stream
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /api/status.json
+              port: stream
+            initialDelaySeconds: 2
+            periodSeconds: 10
+            failureThreshold: 2
+          resources:
+            {{- toYaml .Values.stream.resources | nindent 12 }}
       volumes:
         - name: data
           persistentVolumeClaim:
@@ -86,6 +128,20 @@ spec:
       port: 80
       targetPort: http
 ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: city-game-stream
+  labels:
+    app: city-game
+spec:
+  selector:
+    app: city-game
+  ports:
+    - name: stream
+      port: 80
+      targetPort: stream
+---
 apiVersion: networking.istio.io/v1alpha3
 kind: VirtualService
 metadata:
@@ -103,5 +159,74 @@ spec:
     - route:
         - destination:
             host: city-game.{{ .Release.Namespace }}.svc.cluster.local
+            port:
+              number: 80
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: city-game-live
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  # The public host IS the streaming experience: everything funnels to the
+  # video bridge. The direct client stays on the tailnet (city-game VS).
+  hosts:
+    {{- toYaml .Values.viewerHosts | nindent 4 }}
+  gateways:
+    - istio-system/dev
+    - istio-system/cloudflare
+    - istio-system/tailscale
+  http:
+    # Ordered matches; the last is the catch-all.
+    - match:
+        - uri:
+            prefix: /view
+      route:
+        - destination:
+            host: city-game-stream.{{ .Release.Namespace }}.svc.cluster.local
+            port:
+              number: 80
+    - match:
+        - uri:
+            prefix: /ws/
+      route:
+        - destination:
+            host: city-game-stream.{{ .Release.Namespace }}.svc.cluster.local
+            port:
+              number: 80
+    - match:
+        - uri:
+            prefix: /api/
+      route:
+        - destination:
+            host: city-game-stream.{{ .Release.Namespace }}.svc.cluster.local
+            port:
+              number: 80
+    - match:
+        - uri:
+            prefix: /static/
+      route:
+        - destination:
+            host: city-game-stream.{{ .Release.Namespace }}.svc.cluster.local
+            port:
+              number: 80
+    # Root serves the viewer (bridge redirects to a live seat).
+    - match:
+        - uri:
+            exact: /
+      route:
+        - destination:
+            host: city-game-stream.{{ .Release.Namespace }}.svc.cluster.local
+            port:
+              number: 80
+      rewrite:
+        uri: /view
+    - match:
+        - uri:
+            prefix: /
+      route:
+        - destination:
+            host: city-game-stream.{{ .Release.Namespace }}.svc.cluster.local
             port:
               number: 80
