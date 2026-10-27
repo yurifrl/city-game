@@ -1,8 +1,9 @@
 // WebSocket transport for the command path. Connects to /ws (dev proxy targets
 // the server), identifies with a stable actor key on every open (first message
 // on a fresh connection, per docs/contracts/multiplayer-stream.md §1.1),
-// reconnects with 1s→10s exponential backoff reset on successful open, tracks
-// pending commands by command_id, and dispatches server messages to the
+// reconnects with 1s→10s exponential backoff reset on successful open under a
+// 5s connect watchdog (a handshake can stall forever with no open/close),
+// tracks pending commands by command_id, and dispatches server messages to the
 // handlers wired by the composition root.
 
 import type {
@@ -28,6 +29,14 @@ export interface ClientHandlers {
 
 const BASE_BACKOFF_MS = 1000;
 const MAX_BACKOFF_MS = 10000;
+/**
+ * Wall-clock budget for one connection attempt. A WebSocket whose handshake
+ * stalls (network churn, proxy remap, lost upgrade) never fires `open` or
+ * `close` on its own — observed as a 9-minute "connecting…" on a headless
+ * seat while the same server answered fresh handshakes in milliseconds.
+ * Without a deadline the retry loop never wakes up.
+ */
+const CONNECT_TIMEOUT_MS = 5000;
 const KEY_STORAGE_ITEM = "city-key";
 
 /**
@@ -61,6 +70,7 @@ export class CityClient {
   private ws: WebSocket | null = null;
   private pending = new Map<string, PendingEntry>();
   private reconnectTimer: number | null = null;
+  private connectTimer: number | null = null;
   private backoffAttempt = 0;
   private closedByUser = false;
   private currentStatus: ConnectionStatus = "offline";
@@ -109,6 +119,10 @@ export class CityClient {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+    if (this.connectTimer !== null) {
+      clearTimeout(this.connectTimer);
+      this.connectTimer = null;
+    }
     this.failPending(new Error("client closed before the server replied"));
     this.ws?.close();
     this.ws = null;
@@ -129,7 +143,24 @@ export class CityClient {
       return;
     }
     this.ws = ws;
+    // A WebSocket whose handshake stalls stays in CONNECTING forever — no
+    // `open`, no `close` — so the reconnect loop never fires. Arm a one-shot
+    // deadline per attempt; a healthy server answers in milliseconds.
+    this.connectTimer = window.setTimeout(() => {
+      this.connectTimer = null;
+      if (this.ws !== ws || this.closedByUser) return;
+      console.warn("city client: connection attempt timed out, retrying");
+      this.ws = null;
+      this.scheduleReconnect();
+      // Does not await events: the stalled socket is discarded, never used.
+      ws.onopen = ws.onclose = ws.onmessage = ws.onerror = null;
+      ws.close();
+    }, CONNECT_TIMEOUT_MS);
     ws.onopen = () => {
+      if (this.connectTimer !== null) {
+        clearTimeout(this.connectTimer);
+        this.connectTimer = null;
+      }
       this.backoffAttempt = 0;
       this.setStatus("online");
       // identify must be the first message on every fresh connection; the
@@ -138,6 +169,10 @@ export class CityClient {
     };
     ws.onmessage = (ev) => this.dispatch(ev.data);
     ws.onclose = () => {
+      if (this.connectTimer !== null) {
+        clearTimeout(this.connectTimer);
+        this.connectTimer = null;
+      }
       this.ws = null;
       this.failPending(new Error("connection lost before the server replied"));
       if (this.closedByUser) return;

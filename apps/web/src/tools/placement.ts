@@ -5,7 +5,7 @@
 // stay pending until the server replies; rejections surface as toasts with the
 // server's message. Unarmed clicks pick buildings for the inspector.
 
-import type { Scene } from "@babylonjs/core";
+import type { AbstractMesh, Scene } from "@babylonjs/core";
 import type {
   AssetDefinitionTS,
   CellTS,
@@ -195,7 +195,7 @@ export class PlacementTool {
     const point = this.localPoint(ev);
     // Prefer a direct hit on a rendered building, then fall back to the
     // authoritative cell index (also works before prototypes compile).
-    const buildingPick = this.deps.scene.pick(point.x, point.y, (mesh) =>
+    const buildingPick = this.deps.scene.pick(point.x, point.y, (mesh: AbstractMesh) =>
       this.deps.views.isPrototype(mesh),
     );
     const fromMesh = buildingPick ? this.deps.views.resolveBuildingId(buildingPick) : null;
@@ -203,7 +203,7 @@ export class PlacementTool {
       this.deps.onSelectBuilding(fromMesh);
       return;
     }
-    const groundPick = this.deps.scene.pick(point.x, point.y, (mesh) => mesh === this.deps.grid.ground);
+    const groundPick = this.deps.scene.pick(point.x, point.y, (mesh: AbstractMesh) => mesh === this.deps.grid.ground);
     const cell = groundPick?.pickedPoint ? cellFromPoint(groundPick.pickedPoint, this.deps.replica.grid) : null;
     const building = cell ? this.deps.replica.buildingAt(cell) : undefined;
     this.deps.onSelectBuilding(building?.id ?? null);
@@ -211,7 +211,7 @@ export class PlacementTool {
 
   private pickCell(ev: PointerEvent): CellTS | null {
     const point = this.localPoint(ev);
-    const pick = this.deps.scene.pick(point.x, point.y, (mesh) => mesh === this.deps.grid.ground);
+    const pick = this.deps.scene.pick(point.x, point.y, (mesh: AbstractMesh) => mesh === this.deps.grid.ground);
     return pick?.pickedPoint ? cellFromPoint(pick.pickedPoint, this.deps.replica.grid) : null;
   }
 
