@@ -18,6 +18,11 @@ metadata:
     app: city-game
 spec:
   replicas: 1
+  # RWO SQLite volume: a rolling update on a different node deadlocks on the
+  # volume detach (new pod waits for the old pod's PVC, old pod waits for the
+  # new pod to become ready). Recreate takes the brief downtime instead.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: city-game
