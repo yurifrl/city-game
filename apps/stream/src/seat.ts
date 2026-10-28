@@ -292,6 +292,28 @@ export class Seat {
       }
 
       await waitFor(() => this.lastFrame !== null, this.env.bootTimeoutMs, `seat ${this.id} first frame`);
+      if (!this.env.fake) {
+        // A first frame can be the client's own failure screen ("backend:
+        // unavailable") — pixels alone prove nothing. The game client reflects
+        // its render backend in #backend-chip (apps/web/src/main.ts); a live
+        // engine counts as booted, and a dead one fails the boot with a log
+        // tail instead of idling on an error screen. Pages without that chip
+        // (the stub page in test/real-chrome.test.ts) keep the frame-only
+        // gate: they exercise chrome mechanics, not the game client.
+        await waitFor(async () => {
+          const r = await cdp.send('Runtime.evaluate', {
+            expression: `(() => { const chip = document.getElementById('backend-chip'); if (chip === null) return 'no-chip'; return chip.textContent ?? ''; })()`,
+            returnByValue: true,
+          });
+          const chip = String((r as unknown as { result?: { value?: string } }).result?.value ?? '');
+          if (chip === 'no-chip') return true;
+          if (/webgpu|webgl\d/.test(chip)) return true;
+          if (chip.includes('unavailable')) {
+            throw new Error(`game client has no render backend (${chip})`);
+          }
+          return false;
+        }, this.env.bootTimeoutMs, `seat ${this.id} render backend`);
+      }
       this.status = 'ready';
     } catch (err) {
       this.error = err instanceof Error ? err.message : String(err);

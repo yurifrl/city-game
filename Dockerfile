@@ -45,13 +45,20 @@ RUN cargo install --locked --path crates/server --root /out
 # on the mounted volume via /app/data -> /data.
 FROM alpine:3.22 AS runtime
 # Chromium + Noto fonts serve MODE=stream seats; bun runs the stream bridge.
+# chromium-swiftshader ships the software Vulkan ICD (SwANGLE — ANGLE on
+# SwiftShader) that WebGL/WebGPU render through on CPU-only nodes; it exists
+# for both amd64 and arm64. The install must not be optional: without it the
+# seat renders a dead "backend: unavailable" screen, so a missing package is a
+# build failure, not a fallback.
+# The ICD lands in /usr/lib/chromium/ (not the loader's default search path),
+# so VK_ICD_FILENAMES points the loader at it explicitly.
 # Non-essential locale/l10n deps are skipped explicitly to keep the layer small.
 RUN addgroup -g 65532 -S app \
  && adduser -u 65532 -S -G app app \
  && mkdir -p /data /app \
  && ln -s /data /app/data \
  && chown -R app:app /data /app \
- && apk add --no-cache chromium font-noto
+ && apk add --no-cache chromium chromium-swiftshader font-noto
 COPY --from=builder /out/bin/city-server /usr/local/bin/city-server
 COPY --from=web-build /src/dist /app/apps/web/dist
 COPY --from=oven/bun:1-alpine /usr/local/bin/bun /usr/local/bin/bun
@@ -61,6 +68,7 @@ COPY apps/stream/ /app/apps/stream/
 
 ENV CITY_BIND=0.0.0.0:8080
 ENV CITY_STREAM_CHROME=/usr/bin/chromium-browser
+ENV VK_ICD_FILENAMES=/usr/lib/chromium/vk_swiftshader_icd.json
 EXPOSE 8080
 EXPOSE 8092
 USER 65532:65532
