@@ -1,52 +1,15 @@
 version: "3"
 
 vars:
-  PORT: "8090"
+  GAME_PORT: "8090"
+  STREAM_PORT: "8092"
 
 tasks:
-  install:
-    desc: Install web and stream-service dependencies
+  run:
+    desc: Build, start the game server + video bridge, and open the stream in the browser
     cmds:
       - bun install --cwd apps/web
       - bun install --cwd apps/stream
-
-  server:
-    desc: Build and run the authoritative server (127.0.0.1:{{.PORT}})
-    deps: [dist]
-    cmds:
-      - CITY_BIND=127.0.0.1:{{.PORT}} cargo run -p city-server
-
-  web:
-    desc: Run the Vite dev server (proxies /api and /ws to the server)
-    cmds:
-      - bun run --cwd apps/web dev
-
-  dist:
-    desc: Build the web client into apps/web/dist
-    cmds:
       - bun run --cwd apps/web build
-
-  stream:
-    desc: Run the video bridge / seat manager on :8092 (needs the game server up)
-    cmds:
-      - bun run --cwd apps/stream start
-
-  run:
-    desc: Start everything (web client build + server + stream bridge)
-    deps: [server, stream]
-    silent: true
-
-  test:
-    desc: Run workspace tests and type-check the web client
-    cmds:
-      - cargo test --workspace
-      - bun run --cwd apps/web build
-      - bun run --cwd apps/stream typecheck
-      - bun test --cwd apps/stream
-
-  clean:
-    desc: Remove build output
-    cmds:
-      - cargo clean
-      - rm -rf apps/web/dist
-      - rm -rf apps/stream/node_modules
+      - cargo build -p city-server
+      - scripts/run-stream.sh {{.GAME_PORT}} {{.STREAM_PORT}}

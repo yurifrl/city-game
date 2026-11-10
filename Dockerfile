@@ -1,10 +1,8 @@
-# City game — single image, three modes.
+# City game — single image, two modes.
 #
 # The browser talks to the backend directly (same-origin /api + /ws), so the
 # direct-client topology is the DEFAULT mode: city-server serving the static
-# web build, the HTTP API, and the WebSocket on one port. MODE=web runs
-# busybox httpd serving only the static build (standalone static hosting).
-# MODE=stream runs the video bridge (apps/stream): warm headless Chromium
+# web build, the HTTP API, and the WebSocket on one port.# MODE=stream runs the video bridge (apps/stream): warm headless Chromium
 # seats render the game server-side and pixel-only viewers watch/play through
 # them. It expects to run beside a DEFAULT-mode container in the same pod and
 # reaches it at CITY_GAME_URL (default http://127.0.0.1:8080).
@@ -74,6 +72,5 @@ EXPOSE 8092
 USER 65532:65532
 WORKDIR /app
 
-# MODE=web: serve only the static build; MODE=stream: the video bridge;
-# default: full game server.
-CMD ["sh", "-c", "if [ \"$MODE\" = \"web\" ]; then exec busybox httpd -f -p 0.0.0.0:8080 -h /app/apps/web/dist; elif [ \"$MODE\" = \"stream\" ]; then exec bun /app/apps/stream/src/index.ts; else exec city-server; fi"]
+# MODE=stream: the video bridge; default: full game server.
+CMD ["sh", "-c", "if [ \"$MODE\" = \"stream\" ]; then exec bun /app/apps/stream/src/index.ts; else exec city-server; fi"]
