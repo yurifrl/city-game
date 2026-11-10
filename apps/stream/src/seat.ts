@@ -285,10 +285,21 @@ export class Seat {
         // The fake tab has no URL concept; nothing to navigate.
       } else {
         await this.claimSeed();
+        // The load event must be observed BEFORE the first Runtime.evaluate:
+        // evaluating while the game page is still loading wedges its renderer
+        // for good under headless Chromium (one frame, then every renderer-
+        // bound CDP call goes unanswered at 0% CPU), and the seat would sit on
+        // a dead "backend: ?" screen. Subscribe before navigating so the event
+        // cannot be missed.
+        let pageLoaded = false;
+        cdp.on('Page.loadEventFired', () => {
+          pageLoaded = true;
+        });
         // Contract identity (§1): each seat carries its per-seat UUID in the
         // `?seed=` query; the client sends it as `identify.key`, so actor
         // identity and label resolve server-side and survive reconnects.
         await cdp.send('Page.navigate', { url: this.seedUrl() });
+        await waitFor(() => pageLoaded, this.env.bootTimeoutMs, `seat ${this.id} page load`);
       }
 
       await waitFor(() => this.lastFrame !== null, this.env.bootTimeoutMs, `seat ${this.id} first frame`);
