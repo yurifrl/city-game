@@ -52,7 +52,7 @@ export interface LaunchedChrome {
 const DEVTOOLS_LINE = /\bDevTools listening on (ws:\/\/\S+)/;
 
 /**
- * Canonical headless-WebGPU flag set. `--headless=new` and
+ * Canonical headless flag set. `--headless=new` and
  * `--remote-debugging-port=0` are load-bearing (the port is parsed from the
  * announced endpoint); the rest keeps the game's renderer happy without a GPU
  * process crash loop.
@@ -69,7 +69,13 @@ export function chromeArgs(env: StreamEnv, profileDir: string): string[] {
     '--disable-background-timer-throttling',
     '--disable-renderer-backgrounding',
     '--disable-backgrounding-occluded-windows',
-    '--enable-unsafe-webgpu',
+    // WebGPU only where a real GPU backs it (Metal on darwin). Under
+    // SwiftShader in a container the GPU process cannot create the WebGPU
+    // swapchain texture ("SharedImageStub: Unable to create shared image"),
+    // the renderer blocks on it, and the seat streams one stale frame forever.
+    // Without navigator.gpu the game client falls back to WebGL2 (ANGLE on
+    // SwiftShader), which renders continuously.
+    ...(darwin ? ['--enable-unsafe-webgpu'] : []),
     // ANGLE backend follows the host: Metal on darwin/arm64; in containers
     // there is no GPU and no Metal, so rendering goes through SwiftShader
     // (which Chrome ≥132 requires an explicit opt-in for).
