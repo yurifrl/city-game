@@ -5,7 +5,7 @@
 
 image:
   repository: ghcr.io/yurifrl/city-game
-  tag: sha-930aa4d4f708c41642355a54377c246e5e7ef062
+  tag: sha-3e21998b83c92ba987bea068fa8d4ce2bcee304e
   # Pinned by CI to the image built from the deployed commit (sha-<git sha>).
   pullPolicy: Always
 
