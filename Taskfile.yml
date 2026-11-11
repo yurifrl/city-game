@@ -1,16 +1,10 @@
 version: "3"
 
-vars:
-  GAME_PORT: "8090"
-
 tasks:
   run:
-    desc: Build the viewer and server, start the server, and open the stream in the browser
+    desc: Build the viewer into the server binary and serve everything on :8090
     cmds:
-      - bun install --cwd apps/viewer
-      - bun run --cwd apps/viewer build
-      - cargo build -p city-server
-      - scripts/run-stream.sh {{.GAME_PORT}}
+      - cargo run -p city-server
 
   test:
     desc: Rust workspace tests (need a GPU or software Vulkan adapter) and viewer tests

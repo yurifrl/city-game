@@ -1,7 +1,7 @@
 # City game — one image, one process.
 #
 # city-server owns the world, renders every seat's view with wgpu, encodes
-# frames and serves the Svelte viewer, /api, /ws (game wire) and /stream
+# frames and serves its embedded Svelte viewer, /api, /ws (game wire) and /stream
 # (video) on one port. The browser only plays video and sends raw input.
 #
 # Rendering needs a Vulkan device. This image ships Mesa's software Vulkan
@@ -38,13 +38,15 @@ COPY --from=planner /build/recipe.json recipe.json
 RUN cargo chef cook --release --recipe-path recipe.json
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
+# The viewer is embedded into the binary; build.rs must not rebuild it here.
+COPY --from=viewer-build /src/dist ./apps/viewer/dist
+ENV CITY_VIEWER_PREBUILT=1
 RUN cargo install --locked --path crates/server --root /out
 
 # ---- Runtime ------------------------------------------------------------------
-# city-server resolves DIST_DIR and DB_PATH relative to its working directory
-# (./apps/viewer/dist, ./data/city.db — see crates/server/src/main.rs), so the
-# runtime recreates that layout: dist under /app/apps/viewer/dist, SQLite state
-# on the mounted volume via /app/data -> /data.
+# The viewer is embedded in the binary. city-server resolves its SQLite path
+# relative to its working directory (./data/city.db — see
+# crates/server/src/main.rs), so /app/data -> /data puts state on the volume.
 FROM alpine:3.22 AS runtime
 # vulkan-loader provides libvulkan.so.1; mesa-vulkan-swrast is lavapipe, the
 # CPU Vulkan driver (amd64 and arm64); libgcc is needed by the dynamic binary.
@@ -57,7 +59,6 @@ RUN addgroup -g 65532 -S app \
  && chown -R app:app /data /app \
  && apk add --no-cache libgcc vulkan-loader mesa-vulkan-swrast
 COPY --from=builder /out/bin/city-server /usr/local/bin/city-server
-COPY --from=viewer-build /src/dist /app/apps/viewer/dist
 
 ENV CITY_BIND=0.0.0.0:8080
 EXPOSE 8080

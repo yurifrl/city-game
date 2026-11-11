@@ -1,6 +1,6 @@
 //! City server: authoritative world owner, HTTP API, WebSocket replication.
 //! Contract: docs/contracts/multiplayer-stream.md. Run from the repo root:
-//! binds 127.0.0.1:8090, persists ./data/city.db, serves ./apps/viewer/dist.
+//! binds 127.0.0.1:8090, persists ./data/city.db, serves the embedded viewer.
 
 mod adapter;
 mod http;
@@ -8,6 +8,7 @@ mod hub;
 mod persistence;
 mod runner;
 mod seat;
+mod viewer;
 mod ws;
 
 use std::path::Path;
@@ -19,7 +20,6 @@ use city_simulation::{AssetCatalogue, WorldState};
 /// unrelated service and keep the world database hermetic.
 const BIND_ADDR: &str = "127.0.0.1:8090";
 const DB_PATH: &str = "./data/city.db";
-const DIST_DIR: &str = "./apps/viewer/dist";
 const PRESENCE_TTL_SECS: u64 = 30;
 const PLAYER_TTL_SECS: u64 = 1800;
 
@@ -40,10 +40,6 @@ async fn main() {
 }
 
 async fn run() -> Result<(), String> {
-    if !Path::new(DIST_DIR).exists() {
-        eprintln!("city-server: warning: {DIST_DIR} missing; static routes will 404 until the viewer is built (bun run build in apps/viewer)");
-    }
-
     // Boot: open store → seed on empty DB → load tables → from_save → serve.
     let db_path = std::env::var("CITY_DB").unwrap_or_else(|_| DB_PATH.to_owned());
     let store = persistence::Store::open(Path::new(&db_path))?;
@@ -89,7 +85,7 @@ async fn run() -> Result<(), String> {
         .await
         .map_err(|err| format!("cannot bind {bind_addr}: {err}"))?;
     eprintln!("city-server: listening on http://{bind_addr}");
-    axum::serve(listener, http::router(app, DIST_DIR))
+    axum::serve(listener, http::router(app))
         .await
         .map_err(|err| format!("server error: {err}"))
 }

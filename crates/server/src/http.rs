@@ -1,4 +1,4 @@
-//! HTTP surface: static SPA hosting, asset endpoints, WS upgrade.
+//! HTTP surface: embedded SPA hosting, asset endpoints, WS upgrade.
 
 use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::{Path, Query, State};
@@ -11,11 +11,11 @@ use serde::Serialize;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
-use tower_http::services::{ServeDir, ServeFile};
 
 use crate::hub::{ConnectionId, HubHandle};
 use crate::runner::WorldRequest;
 use crate::seat::{self, SharedRenderer};
+use crate::viewer;
 use crate::ws;
 
 /// State shared by all handlers: the ingress queue into the world runner
@@ -56,9 +56,7 @@ struct DefinitionsResponse {
     definitions: Vec<city_protocol::AssetDefinition>,
 }
 
-pub(crate) fn router(app: App, dist_dir: &str) -> Router {
-    let index = std::path::Path::new(dist_dir).join("index.html");
-    let static_service = ServeDir::new(dist_dir).fallback(ServeFile::new(index));
+pub(crate) fn router(app: App) -> Router {
     Router::new()
         .route("/api/seed", get(seed))
         .route("/api/assets", get(assets_get).post(assets_post))
@@ -66,7 +64,7 @@ pub(crate) fn router(app: App, dist_dir: &str) -> Router {
         .route("/ws", get(ws_upgrade))
         .route("/stream", get(stream_upgrade))
         .route("/api/{*rest}", any(api_not_found))
-        .fallback_service(static_service)
+        .fallback(viewer::serve)
         .with_state(app)
 }
 
