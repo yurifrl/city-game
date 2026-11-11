@@ -2,6 +2,8 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+use bevy_ecs::{entity::Entity, prelude::Component, world::World};
+
 use crate::id::{AssetId, BuildingId};
 
 pub const GRID_WIDTH: i32 = 96;
@@ -13,7 +15,9 @@ pub struct Cell {
     pub y: i32,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+/// One placed building. Stored as an ECS component so later systems
+/// (residents, utilities) query it alongside their own components.
+#[derive(Debug, Clone, PartialEq, Component)]
 pub struct Building {
     pub id: BuildingId,
     pub def_id: AssetId,
@@ -33,7 +37,9 @@ pub(crate) fn in_bounds(cell: Cell) -> bool {
 
 /// The single mutable world. One logical writer (the server's world runner).
 ///
-/// Building records live in a dense id-ordered map. Occupancy is indexed by a
+/// Building records are ECS entities in a private `bevy_ecs::World`; the
+/// `index` maps durable `BuildingId`s to entities (ECS entities are never
+/// durable identity) and gives ascending-id iteration. Occupancy is indexed by a
 /// dense row-major cell grid (`occupancy[y * GRID_WIDTH + x]`) with a reverse
 /// index from building id to its occupied cells. Both sides of the index are
 /// maintained only by [`WorldState::insert_building`] and
@@ -42,7 +48,8 @@ pub(crate) fn in_bounds(cell: Cell) -> bool {
 #[derive(Debug)]
 pub struct WorldState {
     tick: u64,
-    buildings: BTreeMap<BuildingId, Building>,
+    ecs: World,
+    index: BTreeMap<BuildingId, Entity>,
     occupancy: Vec<Option<BuildingId>>,
     occupied_cells: HashMap<BuildingId, Vec<Cell>>,
     next_building_id: u64,
@@ -60,7 +67,8 @@ impl WorldState {
     pub(crate) fn restored(tick: u64, next_building_id: u64, next_asset_id: u64) -> Self {
         WorldState {
             tick,
-            buildings: BTreeMap::new(),
+            ecs: World::new(),
+            index: BTreeMap::new(),
             occupancy: vec![None; (GRID_WIDTH * GRID_HEIGHT) as usize],
             occupied_cells: HashMap::new(),
             next_building_id,
@@ -87,12 +95,16 @@ impl WorldState {
     }
 
     pub fn building(&self, id: BuildingId) -> Option<&Building> {
-        self.buildings.get(&id)
+        self.ecs.get::<Building>(*self.index.get(&id)?)
     }
 
     /// All buildings in ascending id order.
     pub fn buildings(&self) -> impl Iterator<Item = &Building> + '_ {
-        self.buildings.values()
+        self.index.values().map(|&entity| {
+            self.ecs
+                .get::<Building>(entity)
+                .expect("every indexed entity holds a Building")
+        })
     }
 
     /// Building occupying `cell`, if any. Must always agree with `buildings()`.
@@ -113,7 +125,7 @@ impl WorldState {
     /// contract violations; the validated command path never produces them.
     pub fn insert_building(&mut self, building: Building, footprint_cells: Vec<Cell>) {
         assert!(
-            !self.buildings.contains_key(&building.id),
+            !self.index.contains_key(&building.id),
             "duplicate building id {:?}",
             building.id
         );
@@ -135,11 +147,19 @@ impl WorldState {
             self.occupancy[slot] = Some(building.id);
         }
         self.occupied_cells.insert(building.id, footprint_cells);
-        self.buildings.insert(building.id, building);
+        let id = building.id;
+        let entity = self.ecs.spawn(building).id();
+        self.index.insert(id, entity);
     }
 
     pub fn remove_building(&mut self, id: BuildingId) -> Option<Building> {
-        let building = self.buildings.remove(&id)?;
+        let entity = self.index.remove(&id)?;
+        let building = self
+            .ecs
+            .get::<Building>(entity)
+            .expect("every indexed entity holds a Building")
+            .clone();
+        self.ecs.despawn(entity);
         for cell in self
             .occupied_cells
             .remove(&id)

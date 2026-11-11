@@ -12,6 +12,11 @@ tokio = { workspace = true }
 axum = { workspace = true }
 tower-http = { workspace = true }
 rusqlite = { workspace = true }
+jpeg-encoder = "0.7.1"
+city-render = { version = "0.1.0", path = "../render" }
 
 [dev-dependencies]
+futures-util = "0.3.34"
+jpeg-decoder = "0.3.2"
 tempfile = "3"
+tokio-tungstenite = "0.30.0"

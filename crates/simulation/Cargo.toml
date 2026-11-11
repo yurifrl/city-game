@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+bevy_ecs = { version = "0.20.1", default-features = false }
 city-protocol = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }

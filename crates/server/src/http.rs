@@ -1,7 +1,7 @@
 //! HTTP surface: static SPA hosting, asset endpoints, WS upgrade.
 
 use axum::extract::ws::WebSocketUpgrade;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{any, delete, get};
@@ -15,6 +15,7 @@ use tower_http::services::{ServeDir, ServeFile};
 
 use crate::hub::{ConnectionId, HubHandle};
 use crate::runner::WorldRequest;
+use crate::seat::{self, SharedRenderer};
 use crate::ws;
 
 /// State shared by all handlers: the ingress queue into the world runner
@@ -24,6 +25,7 @@ pub(crate) struct App {
     pub(crate) world_tx: mpsc::Sender<WorldRequest>,
     pub(crate) hub: HubHandle,
     pub(crate) next_conn: Arc<AtomicU64>,
+    pub(crate) renderer: SharedRenderer,
 }
 
 impl App {
@@ -62,6 +64,7 @@ pub(crate) fn router(app: App, dist_dir: &str) -> Router {
         .route("/api/assets", get(assets_get).post(assets_post))
         .route("/api/assets/{id}", delete(assets_delete))
         .route("/ws", get(ws_upgrade))
+        .route("/stream", get(stream_upgrade))
         .route("/api/{*rest}", any(api_not_found))
         .fallback_service(static_service)
         .with_state(app)
@@ -195,6 +198,22 @@ async fn assets_delete(State(app): State<App>, Path(id): Path<String>) -> Respon
             .into_response(),
         Err(_) => service_unavailable(),
     }
+}
+
+/// `GET /stream?seed=<uuid>` upgrades to a viewer seat. Without `seed` the
+/// seat gets a fresh identity.
+async fn stream_upgrade(
+    State(app): State<App>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+    upgrade: WebSocketUpgrade,
+) -> Response {
+    let seed = params
+        .get("seed")
+        .filter(|seed| !seed.is_empty() && seed.len() <= 64)
+        .cloned()
+        .unwrap_or_else(new_seed);
+    let renderer = app.renderer.clone();
+    upgrade.on_upgrade(move |socket| seat::run(app, renderer, socket, seed))
 }
 
 async fn ws_upgrade(State(app): State<App>, upgrade: WebSocketUpgrade) -> Response {

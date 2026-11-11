@@ -76,9 +76,9 @@ The web client derives its key from the `?seed=` query param when present
   `CITY_PRESENCE_TTL_SECS` (default 30) of silence.
 - **Hub**: `hub.rs` broadcasts `presence` events to **all** connections
   (world events continue to fan out; command results stay direct).
-- **Client**: `apps/web/src/presence/presence.ts` renders one cursor view per
-  remote actor; drag state renders the armed building ghost at the remote
-  cell with the actor's color; label shows on hover.
+- **Rendering**: each seat (crates/server/src/seat) draws one cursor per remote
+  actor; drag state draws the armed building ghost at the remote cell in the
+  actor's colour. The browser only plays video.
 
 ### 3.1 Input → presence mapping (normative)
 
@@ -89,53 +89,59 @@ The web client derives its key from the `?seed=` query param when present
 - Runner per-actor state: last `cell`; drag iff the latest input carries
   `def_id`; `up` clears the drag flag. Presence events fire on state CHANGE
   only, never per packet.
-- Remote seats render `idle` actors as a labelled cursor at `cell` and `drag`
-  actors as the armed-building ghost (per §3 client). A seat learns it is
-  fully booted when it has applied `helloworld`; it then sets
-  `window.__cityReady = true` (the seat manager's boot gate polls this).
+- Remote seats render `idle` actors as a cursor at `cell` and `drag` actors as
+  the armed-building ghost (§3 rendering).
 
-## 4. Seat manager and video bridge (apps/stream)
+## 4. Seats and video stream (crates/server/src/seat)
 
-- Bun + TypeScript service, port 8092. Manages a pool of `CITY_SEATS` (default
-  2) warm headless Chrome seats, each booting `apps/web/dist` with `SEED`
-  until the game socket is up (boot gate).
-- `POST /api/seat` claims a seat, `POST /api/seat/{id}` updates it (viewport,
-  DPR), `DELETE /api/seat/{id}` removes it. Status at `/api/status.json`.
-- Viewer page connects to `/ws/{seatId}`; bridge relays CDP screencast JPEG
-  frames downstream and viewer input upstream at native pixel scale.
-- Tests: `test/happy-path.test.ts` (boot gate, pool readiness, 2-viewer claim
-  + input + frame round-trip, chrome-log filter, auto-destroy teardown).
+The browser has **no game, no game state and no rendering**: it plays video
+and sends raw input. Everything else happens in `city-server`.
 
-## 5. Consolidation (m2-consolidate)
-
-Everything not serving the above is deleted: `apps/site`, `poc/` (after
-evidence extraction), old `.agents/plans/` M1 plans,
-`docs/contracts/milestone-1.md`. `Taskfile.yml` drops `site`/`docker` targets
-and gains `stream`. `.gitignore` keeps `shots/`. `README.md` is a stub
-pointing to `docs/`.
+- `GET /stream?seed=<id>` upgrades to a **seat**: one viewer = one in-process
+  player. The seat joins the world like any game-wire client (`identify`,
+  replica from `helloworld` + events, presence, commands) and owns its camera
+  and armed tool. `seed` is the actor identity (same seed = same player).
+- Rendering: `crates/render` (wgpu, headless, one shared device behind a lock,
+  fixed 1280x720). A seat renders only when its picture changed (idle gating),
+  at most 30 fps, then JPEG-encodes (`CITY_STREAM_QUALITY`, default 75).
+- Viewer -> server (JSON text, coordinates in frame pixels):
+  `{"type":"pointer","action":"move|down|up","x","y","button"}`,
+  `{"type":"wheel","delta_y"}`, `{"type":"key","code"}`. Keys: `Digit1-9`
+  arm definition N, `KeyR` rotate, `KeyX`/`Delete` demolish under cursor,
+  `Escape` disarm; left click places, right/middle drag pans, wheel zooms.
+  The server derives cell, command and actor; the client names none of them.
+  Malformed input is reported in the caption, never silently dropped.
+- Server -> viewer: binary frames `u32 BE meta length | meta JSON | JPEG`
+  (meta `{seq, format:"jpeg", w, h}`), text `{"type":"caption","text"}`
+  (armed tool, last rejection reason, key help) and `{"type":"error","message"}`.
+  A seat the hub sheds as a slow consumer is told and disconnected.
+- Viewer: `apps/viewer` (Svelte + TypeScript): canvas, input forwarding,
+  reconnect with bounded backoff, drops stale frames instead of queueing.
+- Tests: `crates/server/tests/stream.rs` (real binary, real GPU, raw game-wire
+  observer: place, overlap rejection, demolish, idle seat renders nothing),
+  `crates/render/tests`, `apps/viewer/test`.
 
 ## 5b. Production topology (city-game.syscd.live)
 
-One image, three modes (`Dockerfile`): default = `city-server` (static build
-+ `/api` + `/ws` on :8080), `MODE=web` = busybox static hosting, `MODE=stream`
-= the seat bridge on :8092 beside Alpine's `chromium-browser` (SwiftShader
-rendering, `--no-sandbox` under the non-root uid). CI (`build.yml`) builds
-amd64+arm64 images per commit, pins `chart/values.yaml` to `sha-<git sha>`,
-and ArgoCD syncs `chart/`.
+One image, one process (`Dockerfile`): `city-server` serves the viewer page,
+`/api`, `/ws` (game wire) and `/stream` (video) on :8080. It renders on the CPU
+with Mesa lavapipe (`mesa-vulkan-swrast`; the cluster has no GPU) and exits at
+boot if no Vulkan adapter exists. The binary links dynamically against musl
+(`-crt-static`) because wgpu must `dlopen` libvulkan. CI (`build.yml`) builds
+amd64+arm64 images per commit, pins `chart/values.yaml` to `sha-<git sha>`, and
+ArgoCD syncs `chart/`.
 
-The chart runs one pod with both containers: `city-game` (authoritative
-world, SQLite on longhorn) and `stream` (`CITY_GAME_URL=http://127.0.0.1:8080`,
-`CITY_SEATS=2`). Istio routes the public host `city-game.syscd.live` to the
-bridge service (viewer at `/view`), so the public experience is the streaming
-viewer; the direct client stays on the tailnet host `city-game.syscd.tech`.
-Cloudflare Access fronts the `.live` name; `syscd.tech` rides MagicDNS
-without Access.
+The chart runs one pod with one container (SQLite on longhorn). One Istio
+VirtualService routes both hosts (`city-game.syscd.live` behind Cloudflare
+Access, `city-game.syscd.tech` on the tailnet) to the `city-game` service.
+Resource sizes are provisional until frame time per seat is measured.
 
 ## 6. Verification (m2-verify)
 
-- `task test:e2e` spawns server + seat manager, waits for pool readiness.
-- Headless-chromium CDP flow: two viewers claim seats, both place cursor
-  movement, one drags a building, the other sees the ghost; screenshots to
-  `shots/`. Evidence attached to the responsible tk issue.
+- `cargo test --workspace` (needs a GPU adapter; fails rather than skips) and
+  `bun test --cwd apps/viewer`.
+- The stream test drives two clients: a seat viewer sending raw input and a raw
+  game-wire observer asserting what the world committed, plus decoded JPEG
+  pixels for what the viewer saw.
 - Ownership round-trip: place → `save/buildings.owner` persisted → demolish
   → owner gone; receipts still idempotent.

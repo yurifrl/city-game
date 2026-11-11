@@ -1,6 +1,6 @@
 # Architecture decisions
 
-Status: chosen starting architecture and explicit design targets; no implementation or benchmark yet. [Genesis](../GENESIS.md) defines intent, [research](research.md) supplies evidence, and the current M2 contract orders implementation.
+Status: chosen architecture and explicit design targets. **Current implementation: §11 (Rust simulation on `bevy_ecs`, wgpu server-side rendering, JPEG video to a Svelte viewer). Babylon/TypeScript-client text in §§1-2, 6-7, 9-10 is historical and superseded where §11 disagrees; no benchmark yet.** [Genesis](../GENESIS.md) defines intent, [research](research.md) supplies evidence, and the current M2 contract orders implementation.
 
 For the M2 multiplayer slice as actually built, see [§10 Multiplayer walkthrough (M2)](#10-multiplayer-walkthrough-m2).
 
@@ -10,8 +10,8 @@ For the M2 multiplayer slice as actually built, see [§10 Multiplayer walkthroug
 |---|---|---|
 | Authoritative simulation | Rust, focused domain crate | Explicit ownership, predictable storage, strong types, native server execution; not a full rendering/game-engine application |
 | Server | Rust, Tokio + Axum, WebSockets | Async network I/O around a separately owned synchronous world runner |
-| Browser application | TypeScript, Vite, React for panels/forms only | Browser/tooling ecosystem and maintainable editor UI; React does not own world entities or the frame loop |
-| Renderer | Babylon.js; WebGPU preferred, explicit WebGL2 fallback | Integrated picking, instances, LOD and diagnostics reduce project-owned engine infrastructure |
+| Browser application | Svelte + TypeScript, video viewer only (`apps/viewer`; the Babylon client is deleted) | Plays the video stream and sends raw input (pointer, keys, wheel). **No game logic, no simulation state, no rendering, no knowledge of buildings or cells in the browser.** The server maps input to commands |
+| Renderer | Rust, `wgpu`, server-side, encoded to video (`crates/render`; replaced Babylon and the Chrome seats) | Persistent instance buffers and GPU-driven culling; one render path for game and designers |
 | Visual representation | Orthographic low-poly 3D, selective sprites/impostors | Fits the references and integrated building/terrain editing without full sprite-baking constraints |
 | Wire contract | Rust DTOs, Serde JSON initially, generated TypeScript via ts-rs | Small understandable first protocol; no manually duplicated wire types |
 | Persistence | SQLite + rusqlite, one database/writer per world initially | Transactional durable state without a distributed database deployment |
@@ -93,7 +93,7 @@ Stable `PersonId`, `HouseholdId`, `BuildingId` and asset revision references sur
 
 Start with typed dense collections and chunked terrain. Keep hot fields (need levels, next decision time, location/activity) separate from cold biography and story history. Do not create one task, mutex, heap-heavy object tree, or renderer object per person.
 
-Do not invent an ECS framework. If heterogeneous components and cross-cutting queries justify one, `bevy_ecs` can be used standalone behind the domain API. Table versus sparse-set storage and component churn have tradeoffs; ECS is not a population-scale guarantee. No full Bevy application is required for the server.
+**Decision: the simulation stores entities in standalone `bevy_ecs` (no full Bevy app, no Bevy renderer), private behind `WorldState`.** Buildings are components in a private `World`; `BuildingId` stays the durable identity and an explicit id→entity index maps to it. Rendering, when added, calls `wgpu` directly with persistent instance buffers rather than Bevy's per-entity extract/prepare path. Table versus sparse-set storage and component churn have tradeoffs; ECS is not a population-scale guarantee, so measure (task tk-gz7).
 
 ### Time and causality
 
@@ -321,3 +321,22 @@ Key points in this path:
 3. The placed building persists with the placing actor in SQLite, is demolished via a raw second connection, and the replayed command id replays the stored receipt instead of double-demolishing (row count back to 0).
 
 Run it with real Chrome present: `bun test --cwd apps/stream test/e2e.test.ts` (skips when no Chrome is found).
+
+## 11. Streamed rendering (current implementation)
+
+Supersedes the Babylon client (§§1-2, 7, 9, 10.2). The authoritative rule is
+in §1: the browser has no game logic, state or rendering.
+
+| Piece | Where | Responsibility |
+|---|---|---|
+| Simulation | `crates/simulation` | Authoritative rules; buildings are `bevy_ecs` components behind `WorldState` |
+| Renderer | `crates/render` | Headless wgpu: ground grid + instanced boxes, orthographic isometric camera, ground-plane picking, RGBA readback. Knows nothing of buildings or players |
+| Seats | `crates/server/src/seat` | Per viewer: camera, armed tool, world replica, input -> commands, render + JPEG encode, idle gating |
+| Viewer | `apps/viewer` | Svelte canvas: draws frames, forwards raw input, reconnects |
+
+Wire details: `docs/contracts/multiplayer-stream.md` §4. Known limits, all
+unmeasured: one shared GPU device serialises seats; JPEG, not a video codec;
+each rendered frame rebuilds the full box list (no persistent instance
+buffers or culling yet); picking a building for demolition scans buildings;
+the deploy image renders on CPU through lavapipe, built and booted locally on
+arm64 only (amd64 is built by CI, untested here). Performance targets in §8 remain targets.

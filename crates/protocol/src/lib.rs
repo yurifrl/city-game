@@ -1,8 +1,8 @@
-//! Wire DTOs shared by server and web client. Pure data: serde + ts-rs only.
+//! Wire DTOs for the game wire between the server's clients (seats, tools)
+//! and the world owner. Pure data: serde only.
 //! The JSON shape defined here is normative (docs/contracts/multiplayer-stream.md).
 
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 
 /// Decimal string of a u64. JS numbers are unsafe above 2^53.
 pub type WireId = String;
@@ -12,18 +12,14 @@ pub type WireId = String;
 /// connections. Domain twin: `city_simulation::ActorId`.
 pub type ActorId = String;
 
-pub const TS_EXPORT_DIR: &str = "../../../apps/web/src/protocol/generated/";
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../apps/web/src/protocol/generated/")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct Cell {
     pub x: i32,
     pub y: i32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../apps/web/src/protocol/generated/")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Archetype {
     House,
@@ -32,16 +28,14 @@ pub enum Archetype {
     Tower,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../apps/web/src/protocol/generated/")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WindowStyle {
     Grid,
     Stripes,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../apps/web/src/protocol/generated/")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct AssetPart {
     /// Open vocabulary from the Asset Studio ("box", "roof_gable", "cylinder",
@@ -59,8 +53,7 @@ pub struct AssetPart {
     pub color: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../apps/web/src/protocol/generated/")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct Recipe {
     pub name: String,
@@ -78,16 +71,14 @@ pub struct Recipe {
     pub parts: Vec<AssetPart>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../apps/web/src/protocol/generated/")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct DerivedStats {
     pub capacity: u32,
     pub cost_credits: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../apps/web/src/protocol/generated/")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct AssetDefinition {
     pub id: WireId,
@@ -96,8 +87,7 @@ pub struct AssetDefinition {
     pub derived: DerivedStats,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../apps/web/src/protocol/generated/")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct BuildingDto {
     pub id: WireId,
@@ -112,16 +102,14 @@ pub struct BuildingDto {
     pub owner: Option<ActorId>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../apps/web/src/protocol/generated/")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct GridDto {
     pub width: i32,
     pub height: i32,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../apps/web/src/protocol/generated/")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct WorldDto {
     pub grid: GridDto,
@@ -130,8 +118,7 @@ pub struct WorldDto {
     pub definitions: Vec<AssetDefinition>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../apps/web/src/protocol/generated/")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Command {
     PlaceBuilding {
@@ -150,8 +137,7 @@ pub enum Command {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../apps/web/src/protocol/generated/")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ClientMessage {
     /// First frame on every fresh connection. `key` is the seat's
@@ -165,8 +151,7 @@ pub enum ClientMessage {
 
 /// One pointer sample. `cell` is always present; `def_id`/`rotation` are
 /// present exactly when the placement tool is armed (hover included).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../apps/web/src/protocol/generated/")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct InputMessage {
     pub kind: InputKind,
@@ -177,8 +162,7 @@ pub struct InputMessage {
     pub rotation: Option<u8>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../apps/web/src/protocol/generated/")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum InputKind {
     Move,
@@ -186,8 +170,7 @@ pub enum InputKind {
     Up,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../apps/web/src/protocol/generated/")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Event {
     BuildingPlaced { building: BuildingDto },
@@ -206,8 +189,7 @@ pub enum Event {
 
 /// Whether the actor is merely hovering the world (`idle`) or holding the
 /// placement tool armed with a def ghost (`drag`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../apps/web/src/protocol/generated/")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PresenceKind {
     Idle,
@@ -216,8 +198,7 @@ pub enum PresenceKind {
 
 /// One actor's presence snapshot: labelled cursor at `cell`, drag ghost when
 /// the placement tool is armed. Idle state omits the def fields entirely.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../apps/web/src/protocol/generated/")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct PresenceState {
     pub actor: ActorId,
@@ -232,8 +213,7 @@ pub struct PresenceState {
     pub rotation: Option<u8>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../apps/web/src/protocol/generated/")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "result", rename_all = "snake_case")]
 pub enum CommandResult {
     Accepted {
@@ -257,8 +237,7 @@ pub enum CommandResult {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../apps/web/src/protocol/generated/")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RejectCode {
     Overlap,
@@ -269,8 +248,7 @@ pub enum RejectCode {
     BadRequest,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../apps/web/src/protocol/generated/")]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ServerMessage {
     /// First frame on a fresh connection, after the client's `identify`:

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/protocol", "crates/simulation", "crates/server"]
+members = ["crates/protocol", "crates/simulation", "crates/render", "crates/server"]
 
 [workspace.dependencies]
 city-protocol = { path = "crates/protocol" }
@@ -12,7 +12,6 @@ tokio = { version = "1", features = ["full"] }
 axum = { version = "0.8", features = ["ws"] }
 tower-http = { version = "0.6", features = ["fs"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
-ts-rs = { version = "10", features = ["serde-compat"] }
 
 [profile.dev]
 opt-level = 1

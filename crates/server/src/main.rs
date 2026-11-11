@@ -1,12 +1,13 @@
 //! City server: authoritative world owner, HTTP API, WebSocket replication.
 //! Contract: docs/contracts/multiplayer-stream.md. Run from the repo root:
-//! binds 127.0.0.1:8090, persists ./data/city.db, serves ./apps/web/dist.
+//! binds 127.0.0.1:8090, persists ./data/city.db, serves ./apps/viewer/dist.
 
 mod adapter;
 mod http;
 mod hub;
 mod persistence;
 mod runner;
+mod seat;
 mod ws;
 
 use std::path::Path;
@@ -18,7 +19,7 @@ use city_simulation::{AssetCatalogue, WorldState};
 /// unrelated service and keep the world database hermetic.
 const BIND_ADDR: &str = "127.0.0.1:8090";
 const DB_PATH: &str = "./data/city.db";
-const DIST_DIR: &str = "./apps/web/dist";
+const DIST_DIR: &str = "./apps/viewer/dist";
 const PRESENCE_TTL_SECS: u64 = 30;
 const PLAYER_TTL_SECS: u64 = 1800;
 
@@ -40,7 +41,7 @@ async fn main() {
 
 async fn run() -> Result<(), String> {
     if !Path::new(DIST_DIR).exists() {
-        eprintln!("city-server: warning: {DIST_DIR} missing; static routes will 404 until the web app is built");
+        eprintln!("city-server: warning: {DIST_DIR} missing; static routes will 404 until the viewer is built (bun run build in apps/viewer)");
     }
 
     // Boot: open store → seed on empty DB → load tables → from_save → serve.
@@ -73,7 +74,11 @@ async fn run() -> Result<(), String> {
         },
     ));
 
+    let renderer = city_render::Renderer::new(seat::FRAME_WIDTH, seat::FRAME_HEIGHT)
+        .map_err(|err| format!("GPU renderer unavailable: {err}"))?;
+
     let app = http::App {
+        renderer: std::sync::Arc::new(std::sync::Mutex::new(renderer)),
         world_tx,
         hub: hub_tx,
         next_conn: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
